@@ -1,0 +1,87 @@
+from __future__ import annotations
+
+from collections.abc import Sequence
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class NetworkConfig:
+    net: str
+    api_base_url: str
+    ws_base_url: str
+    substrate_ws: str
+    evm_rpc_url: str
+
+
+_NETWORKS: dict[str, NetworkConfig] = {
+    "devnet": NetworkConfig(
+        net="devnet",
+        api_base_url="https://rest-api-devnet.deepx.fi",
+        ws_base_url="wss://ws-api-devnet.deepx.fi",
+        substrate_ws="wss://devnet-rpc-new.deepx.fi",
+        evm_rpc_url="https://devnet-rpc-new.deepx.fi",
+    ),
+    "testnet": NetworkConfig(
+        net="testnet",
+        api_base_url="https://rest-api-testnet.deepx.fi",
+        ws_base_url="wss://ws-api-testnet.deepx.fi",
+        substrate_ws="wss://rpc-testnet.deepx.fi",
+        evm_rpc_url="https://rpc-testnet.deepx.fi",
+    ),
+}
+
+
+def normalize_net(net: str) -> str:
+    resolved = str(net).strip().lower()
+    if resolved not in _NETWORKS:
+        raise ValueError(f"net must be one of: {allowed_nets()}")
+    return resolved
+
+
+def allowed_nets() -> str:
+    return ", ".join(sorted(_NETWORKS))
+
+
+def network_config(net: str) -> NetworkConfig:
+    return _NETWORKS[normalize_net(net)]
+
+
+def resolve_substrate_ws_endpoints(
+    substrate_ws: str | None,
+    endpoints: Sequence[str] | None,
+    *,
+    default: str,
+) -> tuple[str, ...]:
+    return resolve_ordered_endpoints(
+        substrate_ws,
+        endpoints,
+        default=default,
+        name="substrate_ws_endpoints",
+    )
+
+
+def resolve_ordered_endpoints(
+    primary: str | None,
+    endpoints: Sequence[str] | None,
+    *,
+    default: str,
+    name: str,
+) -> tuple[str, ...]:
+    configured = str(primary or "").strip()
+    if endpoints is None:
+        return (configured or default,)
+
+    resolved: list[str] = []
+    for endpoint in endpoints:
+        value = str(endpoint).strip()
+        if not value:
+            raise ValueError(f"{name} must contain non-empty URLs")
+        if value not in resolved:
+            resolved.append(value)
+    if not resolved:
+        raise ValueError(f"{name} must not be empty")
+    if configured and configured != resolved[0]:
+        raise ValueError(
+            f"the primary endpoint must match the first {name} entry"
+        )
+    return tuple(resolved)
