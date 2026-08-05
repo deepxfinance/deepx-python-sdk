@@ -11,16 +11,6 @@ Clients:
 
 ## Install
 
-```
-pip install deepx-python-sdk
-```
-
-Requires Python `>=3.12`.
-
-Python dependencies (installed via `pyproject.toml`): `eth-account`,
-`eth-abi`, `eth-utils`, `hexbytes`, `scalecodec`, `substrate-interface`,
-`websockets`, `python-socks`.
-
 ### From source (development)
 
 ```
