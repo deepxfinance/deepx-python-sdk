@@ -15,23 +15,18 @@ Clients:
 pip install deepx-python-sdk
 ```
 
-Optional dependency for WebSocket usage:
-
-```
-pip install "deepx-python-sdk[ws]"
-```
-
 Requires Python `>=3.12`.
 
 Python dependencies (installed via `pyproject.toml`): `eth-account`,
-`eth-abi`, `eth-utils`, `hexbytes`, `scalecodec`, `substrate-interface`.
+`eth-abi`, `eth-utils`, `hexbytes`, `scalecodec`, `substrate-interface`,
+`websockets`, `python-socks`.
 
 ### From source (development)
 
 ```
 git clone https://github.com/deepxfinance/deepx-python-sdk.git
 cd deepx-python-sdk
-pip install -e ".[dev,ws]"
+pip install -e ".[dev]"
 ```
 
 ## Onboarding
@@ -203,11 +198,8 @@ You can still override with a custom `base_url` or `ws_base_url` when needed.
 
 ## Transaction ticket lifecycle
 
-Install the WebSocket extra before using transaction tickets:
-
-```bash
-pip install "deepx-python-sdk[ws]"
-```
+Transaction tickets work out of the box, including WebSocket connections
+routed through an HTTP/SOCKS proxy (`http_proxy` / `https_proxy` env vars).
 
 ### Synchronous ticket workflow
 

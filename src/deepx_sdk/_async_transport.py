@@ -29,8 +29,13 @@ except ImportError:  # pragma: no cover - exercised by dependency injection
 logger = logging.getLogger(__name__)
 
 _INSTALL_MESSAGE = (
-    "Async WebSocket transport requires optional dependencies; "
-    "install them with `pip install 'deepx-python-sdk[ws]'`."
+    "Async WebSocket transport requires the 'websockets' package "
+    "(a core dependency); install it with `pip install websockets`."
+)
+_PROXY_INSTALL_MESSAGE = (
+    "Async WebSocket transport through an HTTP proxy requires the "
+    "'python-socks' package (a core dependency); install it with "
+    "`pip install python-socks`."
 )
 _MAX_UNSUBSCRIBED_TOMBSTONES = 64
 _MAX_ACTIVE_SUBSCRIPTION_NOTIFICATIONS = 64
@@ -460,7 +465,7 @@ class AsyncRpcTransport:
         if not proxy_url:
             return {}
         if Proxy is None:
-            raise RPCError(_INSTALL_MESSAGE)
+            raise RPCError(_PROXY_INSTALL_MESSAGE)
         if parsed.hostname is None:
             raise RPCError(
                 f"WebSocket endpoint has no hostname: {_safe_url(self._url)}"

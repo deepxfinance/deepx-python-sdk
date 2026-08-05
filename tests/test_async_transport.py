@@ -590,20 +590,20 @@ def test_unrelated_connect_type_error_is_not_retried(
     asyncio.run(run())
 
 
-def test_missing_websockets_names_ws_install_extra(
+def test_missing_websockets_names_websockets_package(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     async def run() -> None:
         monkeypatch.setattr(transport_module, "websockets", None, raising=False)
         transport = AsyncRpcTransport("ws://node.test")
 
-        with pytest.raises(RPCError, match=r"deepx-python-sdk\[ws\]"):
+        with pytest.raises(RPCError, match=r"pip install websockets"):
             await transport.connect()
 
     asyncio.run(run())
 
 
-def test_missing_python_socks_names_ws_install_extra(
+def test_missing_python_socks_names_python_socks_package(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     async def run() -> None:
@@ -617,7 +617,7 @@ def test_missing_python_socks_names_ws_install_extra(
             "wss://node.test",
             connect_factory=connect_factory,
         )
-        with pytest.raises(RPCError, match=r"deepx-python-sdk\[ws\]"):
+        with pytest.raises(RPCError, match=r"pip install python-socks"):
             await transport.connect()
 
     asyncio.run(run())

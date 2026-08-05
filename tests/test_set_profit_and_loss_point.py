@@ -5,7 +5,7 @@ import json
 from decimal import Decimal, getcontext
 
 _sys_root = pathlib.Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(_sys_root / "python"))
+sys.path.insert(0, str(_sys_root / "src"))
 
 import deepx_sdk as dx
 from _test_output import make_print

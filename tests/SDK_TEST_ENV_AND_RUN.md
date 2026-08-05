@@ -10,8 +10,8 @@ Run in the `deepx-python-sdk` directory:
 cd deepx-python-sdk
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -U pip ".[dev,ws]"
-export PYTHONPATH=$PWD/python
+pip install -U pip ".[dev]"
+export PYTHONPATH=$PWD/src
 ```
 
 Notes:
