@@ -29,6 +29,14 @@ cd deepx-python-sdk
 pip install -e ".[dev]"
 ```
 
+Alternatively, if you use [uv](https://github.com/astral-sh/uv), run the following to install all extras in a virtual environment:
+
+```
+git clone https://github.com/deepxfinance/deepx-python-sdk.git
+cd deepx-python-sdk
+uv sync --all-extras
+```
+
 ## Onboarding
 
 DeepX uses a **two-tier account model**:
