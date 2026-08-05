@@ -239,6 +239,52 @@ def test_subscription_drains_notification_that_arrives_before_registration() -> 
     asyncio.run(run())
 
 
+def test_subscription_replays_notification_before_subscribe_response() -> None:
+    async def run() -> None:
+        socket = FakeSocket()
+
+        async def connect_factory(_url: str, **_kwargs: object) -> FakeSocket:
+            return socket
+
+        updates: list[object] = []
+        transport = AsyncRpcTransport(
+            "ws://node.test",
+            connect_factory=connect_factory,
+        )
+        await transport.connect()
+
+        subscription = asyncio.create_task(
+            transport.subscribe("subscribe", [], updates.append)
+        )
+        await socket.wait_for_sent(1)
+        request_id = socket.sent[0]["id"]
+        # The node streams a notification BEFORE the subscribe response
+        # registers the route; it must be buffered and replayed.
+        await socket.receive(
+            {
+                "jsonrpc": "2.0",
+                "method": "subscription",
+                "params": {
+                    "subscription": "subscription-early",
+                    "result": "early-update",
+                },
+            }
+        )
+        await socket.receive(
+            {"jsonrpc": "2.0", "id": request_id, "result": "subscription-early"}
+        )
+
+        assert await subscription == "subscription-early"
+        for _ in range(100):
+            if updates:
+                break
+            await asyncio.sleep(0)
+        assert updates == ["early-update"]
+        await transport.close()
+
+    asyncio.run(run())
+
+
 def test_subscriptions_receive_only_their_own_notifications() -> None:
     async def run() -> None:
         socket = FakeSocket()
@@ -544,20 +590,20 @@ def test_unrelated_connect_type_error_is_not_retried(
     asyncio.run(run())
 
 
-def test_missing_websockets_names_ws_install_extra(
+def test_missing_websockets_names_websockets_package(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     async def run() -> None:
         monkeypatch.setattr(transport_module, "websockets", None, raising=False)
         transport = AsyncRpcTransport("ws://node.test")
 
-        with pytest.raises(RPCError, match=r"deepx-python-sdk\[ws\]"):
+        with pytest.raises(RPCError, match=r"pip install websockets"):
             await transport.connect()
 
     asyncio.run(run())
 
 
-def test_missing_python_socks_names_ws_install_extra(
+def test_missing_python_socks_names_python_socks_package(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     async def run() -> None:
@@ -571,7 +617,7 @@ def test_missing_python_socks_names_ws_install_extra(
             "wss://node.test",
             connect_factory=connect_factory,
         )
-        with pytest.raises(RPCError, match=r"deepx-python-sdk\[ws\]"):
+        with pytest.raises(RPCError, match=r"pip install python-socks"):
             await transport.connect()
 
     asyncio.run(run())

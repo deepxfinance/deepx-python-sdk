@@ -835,6 +835,8 @@ _TERMINAL_STATUSES = frozenset(
 _POOL_EXIT_STATUSES = _TERMINAL_STATUSES | {
     TxStatus.IN_BLOCK_SUCCESS,
 }
+
+
 async def _production_components(client: AsyncChainClient) -> AsyncComponents:
     transport = AsyncRpcTransport(client.substrate_ws_endpoints)
     encoder = ExtrinsicEncoder(

@@ -32,6 +32,8 @@ dependencies = [
     "hexbytes>=0.3.1,<2.0.0",
     "scalecodec>=1.2.0,<2.0.0",
     "substrate-interface>=1.7.0,<2.0.0",
+    "websockets>=11.0,<18.0",
+    "python-socks>=2.0",
 ]
 
 [project.urls]
@@ -40,22 +42,18 @@ Repository = "https://github.com/deepxfinance/deepx-python-sdk"
 Issues = "https://github.com/deepxfinance/deepx-python-sdk/issues"
 
 [project.optional-dependencies]
-ws = [
-    "websockets>=11.0,<18.0",
-    "python-socks>=2.0",
-]
 dev = [
-    "pytest>=8.0.0,<9.0.0",
-    "pytest-cov>=5.0.0,<7.0.0",
+    "pytest>=8.0.0,<10.0.0",
+    "pytest-cov>=5.0.0,<8.0.0",
     "build>=1.0",
     "twine>=5.0",
 ]
 
 [tool.setuptools]
-package-dir = {"" = "python"}
+package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
-where = ["python"]
+where = ["src"]
 include = ["deepx_sdk*"]
 
 [tool.setuptools.package-data]
@@ -70,9 +68,9 @@ branch = false
 source = ["deepx_sdk"]
 omit = [
     "tests/*",
-    "python/deepx_sdk/_evm.py",
-    "python/deepx_sdk/_native.py",
-    "python/deepx_sdk/_native_py.py",
+    "src/deepx_sdk/_evm.py",
+    "src/deepx_sdk/_native.py",
+    "src/deepx_sdk/_native_py.py",
 ]
 
 [tool.coverage.report]

@@ -24,7 +24,6 @@ from ._tx_diagnostics import (
 
 
 ResultT = TypeVar("ResultT")
-TxResult = TypeVar("TxResult")
 logger = logging.getLogger(__name__)
 _UPDATE_END = object()
 

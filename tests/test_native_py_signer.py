@@ -16,7 +16,7 @@ from deepx_sdk import ChainError
 def _load_native_py():
     module_path = (
         Path(__file__).resolve().parents[1]
-        / "python"
+        / "src"
         / "deepx_sdk"
         / "_native_py.py"
     )

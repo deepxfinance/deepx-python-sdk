@@ -16,7 +16,7 @@ from ._network import (
     normalize_net,
     resolve_ordered_endpoints,
 )
-from ._rpc_transport import RpcEndpointPool
+from ._rpc_transport import DEFAULT_USER_AGENT, RpcEndpointPool
 
 if TYPE_CHECKING:
     from .api_v1 import V1Client
@@ -34,7 +34,7 @@ class ApiClient:
     base_url: Optional[str] = None
     net: str = "devnet"
     timeout: int = 30
-    user_agent: str = "deepx-python-sdk/0.1.0"
+    user_agent: str = DEFAULT_USER_AGENT
     ws_base_url: Optional[str] = None
     substrate_ws: Optional[str] = None
     evm_rpc_url: Optional[str] = None
@@ -51,7 +51,7 @@ class ApiClient:
     max_priority_fee_per_gas: Optional[int] = None
     use_legacy: bool = False
     nonce_ms: Optional[int] = None
-    evm_rpc_user_agent: str = "deepx-python-sdk/0.1.0"
+    evm_rpc_user_agent: str = DEFAULT_USER_AGENT
     evm_rpc_headers: Optional[dict[str, str]] = None
     evm_rpc_timeout: Optional[float] = None
     base_urls: Sequence[str] | None = None
