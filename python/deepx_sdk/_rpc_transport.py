@@ -3,11 +3,17 @@ from __future__ import annotations
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
+from importlib.metadata import PackageNotFoundError, version
 import threading
 from typing import Iterator, Optional
 from urllib.parse import urlsplit, urlunsplit
 
-DEFAULT_USER_AGENT = "deepx-python-sdk/0.1.0"
+try:
+    _SDK_VERSION = version("deepx-python-sdk")
+except PackageNotFoundError:  # running from an uninstalled source tree
+    _SDK_VERSION = "0.0.0"
+
+DEFAULT_USER_AGENT = f"deepx-python-sdk/{_SDK_VERSION}"
 
 # Default per-request timeout for EVM JSON-RPC HTTP calls (eth_call,
 # eth_estimateGas, eth_chainId, ...). Bounds urlopen so a dead/flaky RPC

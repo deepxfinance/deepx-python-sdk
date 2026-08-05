@@ -239,6 +239,52 @@ def test_subscription_drains_notification_that_arrives_before_registration() -> 
     asyncio.run(run())
 
 
+def test_subscription_replays_notification_before_subscribe_response() -> None:
+    async def run() -> None:
+        socket = FakeSocket()
+
+        async def connect_factory(_url: str, **_kwargs: object) -> FakeSocket:
+            return socket
+
+        updates: list[object] = []
+        transport = AsyncRpcTransport(
+            "ws://node.test",
+            connect_factory=connect_factory,
+        )
+        await transport.connect()
+
+        subscription = asyncio.create_task(
+            transport.subscribe("subscribe", [], updates.append)
+        )
+        await socket.wait_for_sent(1)
+        request_id = socket.sent[0]["id"]
+        # The node streams a notification BEFORE the subscribe response
+        # registers the route; it must be buffered and replayed.
+        await socket.receive(
+            {
+                "jsonrpc": "2.0",
+                "method": "subscription",
+                "params": {
+                    "subscription": "subscription-early",
+                    "result": "early-update",
+                },
+            }
+        )
+        await socket.receive(
+            {"jsonrpc": "2.0", "id": request_id, "result": "subscription-early"}
+        )
+
+        assert await subscription == "subscription-early"
+        for _ in range(100):
+            if updates:
+                break
+            await asyncio.sleep(0)
+        assert updates == ["early-update"]
+        await transport.close()
+
+    asyncio.run(run())
+
+
 def test_subscriptions_receive_only_their_own_notifications() -> None:
     async def run() -> None:
         socket = FakeSocket()

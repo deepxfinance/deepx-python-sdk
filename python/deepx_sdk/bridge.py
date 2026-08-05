@@ -15,6 +15,7 @@ from ._errors import RESTError
 from ._evm import evm_call
 from ._native import build_signed_tx
 from ._native_py import _rpc_call
+from ._rpc_transport import DEFAULT_USER_AGENT
 from ._types import TxResult
 from .api import ApiClient
 from .units import from_base_unit, to_base_unit
@@ -264,7 +265,7 @@ def fetch_sign_bridge_out_signature(
     body: Mapping[str, Any],
     dst_chain_id: int | str | None = None,
     timeout: int = 30,
-    user_agent: str = "deepx-python-sdk/0.1.0",
+    user_agent: str = DEFAULT_USER_AGENT,
 ) -> dict[str, Any]:
     request_dst_chain_id = _get_request_dst_chain_id(body, dst_chain_id)
     fetch_url = get_sign_bridge_out_url(base_url, request_dst_chain_id)
@@ -627,7 +628,7 @@ class BridgeServiceClient:
     bridge_api_url: str
     api_key: str | None = None
     timeout: int = 30
-    user_agent: str = "deepx-python-sdk/0.1.0"
+    user_agent: str = DEFAULT_USER_AGENT
     _client: ApiClient = field(init=False, repr=False)
 
     def __post_init__(self) -> None:

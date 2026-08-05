@@ -34,6 +34,7 @@ _INSTALL_MESSAGE = (
 )
 _MAX_UNSUBSCRIBED_TOMBSTONES = 64
 _MAX_ACTIVE_SUBSCRIPTION_NOTIFICATIONS = 64
+_MAX_EARLY_NOTIFICATIONS = 32
 
 
 class ConnectionState(str, Enum):
@@ -129,7 +130,7 @@ class AsyncRpcTransport:
         self._request_may_have_been_sent: set[int] = set()
         self._subscribe_intents: dict[int, _SubscribeIntent] = {}
         self._subscriptions: dict[str, _SubscriptionRoute] = {}
-        self._early_notifications: dict[str, list[dict[str, object]]] = {}
+        self._early_notifications: dict[str, list[object]] = {}
         self._unsubscribed: OrderedDict[str, None] = OrderedDict()
         self._state = ConnectionState.DISCONNECTED
         self._connection_count = 0
@@ -351,6 +352,10 @@ class AsyncRpcTransport:
             self._requests.pop(request_id, None)
             self._request_methods.pop(request_id, None)
             self._subscribe_intents.pop(request_id, None)
+            if not self._subscribe_intents:
+                # No subscribe in flight: race-buffered notifications can no
+                # longer be attributed to a pending registration.
+                self._early_notifications.clear()
             self._request_may_have_been_sent.discard(request_id)
 
     async def subscribe(
@@ -563,6 +568,17 @@ class AsyncRpcTransport:
             return
         if subscription_id in self._unsubscribed:
             return
+        # The node may stream notifications before the subscribe response
+        # registers the route; buffer them for replay on registration.
+        # Only while a subscribe is in flight — anything else is junk.
+        if not self._subscribe_intents:
+            return
+        total = sum(len(items) for items in self._early_notifications.values())
+        if total >= _MAX_EARLY_NOTIFICATIONS:
+            return
+        self._early_notifications.setdefault(subscription_id, []).append(
+            params.get("result")
+        )
 
     def _dispatch_response(self, message: dict[str, object]) -> None:
         request_id = message.get("id")
@@ -608,6 +624,13 @@ class AsyncRpcTransport:
             self._unsubscribed.pop(subscription_id, None)
             intent.subscription_id = subscription_id
             intent.route = route
+            early = self._early_notifications.pop(subscription_id, None)
+            if early:
+                for early_result in early:
+                    try:
+                        route.queue.put_nowait(early_result)
+                    except asyncio.QueueFull:
+                        break
 
         self._requests.pop(request_id, None)
         self._request_methods.pop(request_id, None)
