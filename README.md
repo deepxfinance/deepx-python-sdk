@@ -11,22 +11,20 @@ Clients:
 
 ## Install
 
-```
-pip install deepx-python-sdk
-```
-
-Requires Python `>=3.12`.
-
-Python dependencies (installed via `pyproject.toml`): `eth-account`,
-`eth-abi`, `eth-utils`, `hexbytes`, `scalecodec`, `substrate-interface`,
-`websockets`, `python-socks`.
-
 ### From source (development)
 
 ```
 git clone https://github.com/deepxfinance/deepx-python-sdk.git
 cd deepx-python-sdk
 pip install -e ".[dev]"
+```
+
+Alternatively, if you use [uv](https://github.com/astral-sh/uv), run the following to install all extras in a virtual environment:
+
+```
+git clone https://github.com/deepxfinance/deepx-python-sdk.git
+cd deepx-python-sdk
+uv sync --all-extras
 ```
 
 ## Onboarding
@@ -200,6 +198,15 @@ You can still override with a custom `base_url` or `ws_base_url` when needed.
 
 Transaction tickets work out of the box, including WebSocket connections
 routed through an HTTP/SOCKS proxy (`http_proxy` / `https_proxy` env vars).
+
+**Choosing a client for trading.** For market making and other
+latency-sensitive, high-frequency strategies, use **`AsyncChainClient`**: it
+returns a ticket as soon as the node accepts the transaction (no waiting for
+a block), and a single client owns the event loop, timestamp-nonce
+allocation, pool-capacity management, and subscription recovery for you.
+`ChainClient`'s synchronous methods are the better fit for scripts,
+onboarding, and low-frequency operations where blocking until inclusion (or
+finality) is acceptable.
 
 ### Synchronous ticket workflow
 
@@ -560,18 +567,27 @@ print(res.order_id, res.tx_hash)
 Leverage is **not** a per-order parameter — it's a per-subaccount sizing cap
 (`max_notional = available_margin × effective_leverage`), set globally or per
 market before trading. Values are scaled by `LEVERAGE_PRECISION` (1000):
-10x = 10000. The more conservative of global vs per-market wins; `None` clears
-an override.
+10x = 10000, and **0.1x steps** are allowed — the value must be a multiple of
+`LEVERAGE_STEP` (100), e.g. 12.5x = 12500 (out-of-range/invalid values fail
+with `22_6 InvalidLeverage`). The more conservative of global vs per-market
+wins; `None` clears an override.
 
 ```python
 chain.perp_market.set_global_leverage(max_leverage=10_000)            # 10x global
-chain.perp_market.set_per_market_leverage(market_id=3, max_leverage=3_000)   # 3x for market 3
+chain.perp_market.set_per_market_leverage(market_id=3, max_leverage=12_500)  # 12.5x for market 3
 chain.perp_market.set_per_market_leverage(market_id=3, max_leverage=None)    # clear override
 
 chain.perp_market.global_max_leverage_for()                 # -> 10000
 chain.perp_market.per_market_max_leverage_for(market_id=3)  # -> 0 (no override)
 chain.perp_market.effective_leverage_for(market_id=3)       # -> min(global, override or global)
 ```
+
+Each subaccount may hold at most `max_active_orders` open orders **per
+market** (devnet: 128; owner-configurable via `update_max_active_orders_num`,
+Stop orders exempt). Exceeding it fails with `22_4 TooManyActiveOrders`. The
+limit is on-chain configuration, not a constant — read it from
+`chain.perp_market.perp_markets(market_id=...).max_active_orders` (or the
+REST `maxOpenOrders` field) instead of hardcoding it.
 
 A runnable version is in [`examples/leverage.py`](examples/leverage.py).
 
@@ -835,25 +851,28 @@ print(res.tx_hash, res.event)  # liquidation events are conditional
 ```python
 stats = chain.subaccount_client.user_stats(address="0xYOUR_OWNER")
 info = chain.subaccount_client.subaccount_info(address="0xYOUR_SUBACCOUNT")
-oct_accounts = chain.subaccount_client.one_click_trading_accounts_for(owner="0xYOUR_OWNER")
-delegates = chain.subaccount_client.delegate_accounts(user="0xYOUR_OWNER")
-print(stats, info, oct_accounts, delegates)
+delegates = chain.subaccount_client.delegate_accounts_for(owner="0xYOUR_OWNER")
+print(stats, info, delegates)
 ```
 
-Delegate accounts (order-only operators for a subaccount) take a display name
-and an expiry (wall-clock ms; past values are rejected with `19_34
-DelegateExpiry`). A subaccount can have multiple delegates; re-setting the
-same delegate updates its name/expiry:
+Delegate accounts are **wallet-level** operators: a delegate set on your EOA
+can act on every subaccount the wallet owns. They take a display name and an
+expiry (wall-clock ms; past values are rejected with `19_34 DelegateExpiry`);
+re-setting the same delegate updates its name/expiry. A delegate's `mode`
+gates what it may do (`0=PlaceOrCancelOrder` default, `1=DepositOrWithdraw`,
+`2=UpdateSubaccount`, `3=Disable`):
 
 ```python
 chain.subaccount_client.set_delegate_account(
-    subaccount="0xYOUR_SUBACCOUNT",
     delegate="0xDELEGATE_ADDRESS",
     name="mm-bot",
     valid_until=int(time.time() * 1000) + 86_400_000,  # +24h
 )
+chain.subaccount_client.update_delegate_mode(
+    delegate="0xDELEGATE_ADDRESS",
+    new_mode=1,  # DepositOrWithdraw; variant names also accepted
+)
 chain.subaccount_client.remove_delegate_account(
-    subaccount="0xYOUR_SUBACCOUNT",
     delegate="0xDELEGATE_ADDRESS",
 )
 ```
@@ -965,6 +984,64 @@ res = chain.lending.buy_quota(
 ```
 
 A runnable version is in [`examples/quota.py`](examples/quota.py).
+
+## EVM bridge (Bool Network)
+
+> **Scope:** the SDK currently supports EVM↔EVM bridging between **Ethereum
+> and DeepX** only. For other chains and routes (e.g. Bitcoin, Solana), please
+> use the official bridge on our website: [deepx.fi](https://deepx.fi).
+
+The EVM bridge (`MultiTokenBridge`, a Bool Network consumer) moves tokens
+between DeepX and other EVM chains. The flow:
+
+1. `get_bridge_fee` quotes the relayer fee in the source chain's gas token.
+2. An off-chain **authorizer** service issues an EIP-712 approval signature.
+3. `bridgeOut` locks/burns the tokens on the source chain (ERC-20 tokens need
+   an `approve` first — the SDK handles it automatically).
+4. Bool Network's relayer delivers the message and the destination bridge
+   releases/mints to the recipient — **no destination-side action needed**.
+
+```python
+from deepx_sdk.bridge import BridgeApi
+
+src = BridgeApi(
+    rpc_url="https://devnet-rpc-new.deepx.fi",
+    chain_id=4845,
+    contract_address="0xa32408eD9f1dFa1e2dc30143F9133Af31E8514ed",
+    private_key="0xYOUR_PRIVATE_KEY",
+)
+result = src.bridge_out_with_sign(
+    sign_api_base="https://rest-api-devnet.deepx.fi",  # authorizer service
+    dst_chain_id=11155111,                             # Ethereum Sepolia
+    amount=1_000_000,                                  # 1 USDC (6 decimals)
+    dst_recipient="0xRECIPIENT_ON_SEPOLIA",
+    symbol="USDC",                                     # or token_id=3
+)
+print(result["tx_hash"])
+
+# Confirm arrival by watching the destination bridge's BridgeIn event:
+dst = BridgeApi(
+    rpc_url="https://ethereum-sepolia-rpc.publicnode.com",
+    chain_id=11155111,
+    contract_address="0x5303306D27A5A7e9C198000B752463107cf90E29",
+)
+event = dst.wait_bridge_in(recipient="0xRECIPIENT_ON_SEPOLIA",
+                           from_block=dst.latest_block() - 20)
+print(event["amount"], event["tx_hash"])
+```
+
+Current deployments (devnet pair):
+
+| Chain | Chain ID | Bridge |
+| ----- | -------- | ------ |
+| DeepX devnet | 4845 | `0xa32408eD9f1dFa1e2dc30143F9133Af31E8514ed` |
+| Ethereum Sepolia | 11155111 | `0x5303306D27A5A7e9C198000B752463107cf90E29` |
+
+Token ids: `ETH=1, USDT=2, USDC=3, DAI=4, BNB=5, OKB=6` (`BRIDGE_TOKEN_MAP`).
+A token must be registered on **both** chains' bridges before it can be
+bridged; `get_token_info(token_id)` returns the per-chain registration.
+
+A runnable version is in [`examples/bridge_evm.py`](examples/bridge_evm.py).
 
 ## Error codes
 

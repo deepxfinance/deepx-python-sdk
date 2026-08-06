@@ -20,6 +20,7 @@ from deepx_sdk._perp_market import (
 from deepx_sdk._subaccount import (
     _ACCOUNT_INFO_DELEGATES_TUPLE,
     _ACCOUNT_INFO_TUPLE,
+    _ACCOUNT_INFO_V4_TUPLE,
     _USER_TUPLE_V1,
     _decode_subaccount_info,
     _decode_subaccount_info_tuple,
@@ -143,3 +144,30 @@ def test_decode_subaccount_info_delegates_vec() -> None:
     assert info.delegates[0].valid_until == 1781999999000
     assert info.spot_positions[0].symbol == "USDC"
     assert info.next_order_id == 10
+
+
+def test_decode_subaccount_info_v4() -> None:
+    # runtime 190 layout: delegate fields removed from subaccountInfo
+    value = (
+        "0x0000000000000000000000000000000000000011",
+        b"demo",
+        [(b"USDC", 1000)],
+        [(1, b"USDC", 100, 1)],
+        10,
+        1,
+        True,
+    )
+    raw = encode([_ACCOUNT_INFO_V4_TUPLE], [value])
+    layout, decoded = _decode_subaccount_info_tuple(raw)
+    info = _decode_subaccount_info(decoded, layout)
+
+    assert layout == "v4"
+    assert info.authority.lower() == "0x0000000000000000000000000000000000000011"
+    assert info.delegate == ""
+    assert info.delegates is None
+    assert info.name == "demo"
+    assert info.spot_positions[0].symbol == "USDC"
+    assert len(info.borrow_positions) == 1
+    assert info.next_order_id == 10
+    assert info.status == 1
+    assert info.is_margin_trading_enabled is True

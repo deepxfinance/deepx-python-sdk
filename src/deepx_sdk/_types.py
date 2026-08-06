@@ -12,7 +12,6 @@ __all__ = [
     "LendingMarketState",
     "MarketSpec",
     "ModifyOrderResult",
-    "OneClickTradingInfo",
     "OraclePriceInfo",
     "OrderResult",
     "PerpLiquidationFeeRate",
@@ -296,6 +295,12 @@ class DelegateInfo:
     delegate_address: str
     delegate_name: str
     valid_until: int
+    # Chain runtime 190: delegates are wallet-level and carry a mode
+    # (DelegateMode: 0=PlaceOrCancelOrder, 1=DepositOrWithdraw,
+    # 2=UpdateSubaccount, 3=Disable). Defaults keep pre-190 3-field decodes
+    # working.
+    mode: int = 0
+    create_time: int = 0
 
 
 @dataclass
@@ -329,13 +334,6 @@ class SubaccountUserStats:
     if_staked_quote_asset_amount: int
     number_of_sub_accounts: int
     number_of_sub_accounts_created: int
-
-
-@dataclass
-class OneClickTradingInfo:
-    address: str
-    mode: int
-    create_time: int
 
 
 @dataclass

@@ -128,11 +128,8 @@ def test_chain_client_all_public_methods_are_explicitly_covered() -> None:
             "initialize_subaccount",
             "delete_subaccount",
             "no_op",
-            "create_one_click_trading_account",
-            "delete_one_click_trading_account",
-            "disable_one_click_trading_account",
-            "enable_one_click_trading_account",
             "set_delegate_account",
+            "update_delegate_mode",
             "remove_delegate_account",
             "set_spot_margin",
             "rename_subaccount",
@@ -141,8 +138,8 @@ def test_chain_client_all_public_methods_are_explicitly_covered() -> None:
             "liquidate_by_market",
             "user_stats",
             "subaccount_info",
-            "one_click_trading_accounts_for",
-            "delegate_accounts",
+            "delegate_accounts_for",
+            "delegator_accounts_for",
         },
         "SystemClient": {"system_account"},
         "LendingClient": {
@@ -231,11 +228,8 @@ def test_chain_client_all_public_methods_dispatch_without_skip(monkeypatch) -> N
         "initialize_subaccount",
         "delete_subaccount",
         "no_op",
-        "create_one_click_trading_account",
-        "delete_one_click_trading_account",
-        "disable_one_click_trading_account",
-        "enable_one_click_trading_account",
         "set_delegate_account",
+        "update_delegate_mode",
         "remove_delegate_account",
         "set_spot_margin",
         "rename_subaccount",
@@ -244,8 +238,8 @@ def test_chain_client_all_public_methods_dispatch_without_skip(monkeypatch) -> N
         "liquidate_by_market",
         "user_stats",
         "subaccount_info",
-        "one_click_trading_accounts_for",
-        "delegate_accounts",
+        "delegate_accounts_for",
+        "delegator_accounts_for",
         "system_account",
         "deposit",
         "deposit_from_subaccount",
@@ -312,12 +306,9 @@ def test_chain_client_all_public_methods_dispatch_without_skip(monkeypatch) -> N
     client.subaccount_client.initialize_subaccount(name=b"test")
     client.subaccount_client.delete_subaccount(subaccount=SUBACCOUNT)
     client.subaccount_client.no_op()
-    client.subaccount_client.create_one_click_trading_account(new_account=OTHER)
-    client.subaccount_client.delete_one_click_trading_account(account=OTHER)
-    client.subaccount_client.disable_one_click_trading_account(account=OTHER)
-    client.subaccount_client.enable_one_click_trading_account(account=OTHER)
-    client.subaccount_client.set_delegate_account(subaccount=SUBACCOUNT, delegate=OTHER, name=b"mm", valid_until=1)
-    client.subaccount_client.remove_delegate_account(subaccount=SUBACCOUNT, delegate=OTHER)
+    client.subaccount_client.set_delegate_account(delegate=OTHER, name=b"mm", valid_until=1)
+    client.subaccount_client.update_delegate_mode(delegate=OTHER, new_mode=1)
+    client.subaccount_client.remove_delegate_account(delegate=OTHER)
     client.subaccount_client.set_spot_margin(subaccount=SUBACCOUNT, enable_spot_margin=True)
     client.subaccount_client.rename_subaccount(subaccount=SUBACCOUNT, new_name=b"new")
     client.subaccount_client.liquidate_perp_by_transfer(
@@ -337,8 +328,8 @@ def test_chain_client_all_public_methods_dispatch_without_skip(monkeypatch) -> N
     client.subaccount_client.liquidate_by_market(target_subaccount=SUBACCOUNT, liquidator=OTHER)
     client.subaccount_client.user_stats(address=SUBACCOUNT)
     client.subaccount_client.subaccount_info(address=SUBACCOUNT)
-    client.subaccount_client.one_click_trading_accounts_for(owner=SUBACCOUNT)
-    client.subaccount_client.delegate_accounts(user=SUBACCOUNT)
+    client.subaccount_client.delegate_accounts_for(owner=SUBACCOUNT)
+    client.subaccount_client.delegator_accounts_for(delegate=SUBACCOUNT)
     client.system.system_account(address=SUBACCOUNT)
     client.lending.deposit(subaccount=SUBACCOUNT, asset=b"USDC", amount=1)
     client.lending.deposit_from_subaccount(from_subaccount=SUBACCOUNT, subaccount=OTHER, asset=b"USDC", amount=1)
@@ -472,11 +463,8 @@ def test_chain_client_all_public_methods_dispatch_without_skip(monkeypatch) -> N
         "initialize_subaccount",
         "delete_subaccount",
         "no_op",
-        "create_one_click_trading_account",
-        "delete_one_click_trading_account",
-        "disable_one_click_trading_account",
-        "enable_one_click_trading_account",
         "set_delegate_account",
+        "update_delegate_mode",
         "remove_delegate_account",
         "set_spot_margin",
         "rename_subaccount",
@@ -485,8 +473,8 @@ def test_chain_client_all_public_methods_dispatch_without_skip(monkeypatch) -> N
         "liquidate_by_market",
         "user_stats",
         "subaccount_info",
-        "one_click_trading_accounts_for",
-        "delegate_accounts",
+        "delegate_accounts_for",
+        "delegator_accounts_for",
         "system_account",
         "deposit",
         "deposit_from_subaccount",

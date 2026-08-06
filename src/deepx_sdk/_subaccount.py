@@ -8,7 +8,6 @@ from ._evm import evm_call
 from ._native import build_signed_tx, submit_pallet_call, submit_pallet_call_wait_event, submit_signed_tx, submit_signed_tx_wait_event
 from ._types import (
     DelegateInfo,
-    OneClickTradingInfo,
     SubaccountBorrowPosition,
     SubaccountInfo,
     SubaccountSpotPosition,
@@ -110,127 +109,12 @@ def no_op(
     return TxResult(tx_hash=res.tx_hash, event=None)
 
 
-def create_one_click_trading_account(
-    *,
-    substrate_ws: str,
-    evm_rpc_url: str,
-    private_key: str,
-    precompile_address: str,
-    new_account: str,
-    quota: Optional[int] = None,
-    chain_id: Optional[int] = None,
-    gas_limit: Optional[int] = None,
-    max_fee_per_gas: Optional[int] = None,
-    max_priority_fee_per_gas: Optional[int] = None,
-    use_legacy: bool = False,
-    nonce: Optional[int] = None,
-    wait_for_finalized: bool = True,
-    timeout_ms: Optional[int] = None,
-) -> TxResult:
-    _ = quota  # Kept for backward compatibility; current precompile signature does not accept quota.
-    return _submit_subaccount_call(
-        substrate_ws=substrate_ws,
-        evm_rpc_url=evm_rpc_url,
-        private_key=private_key,
-        call_function="create_one_click_trading_account",
-        call_params={"new": normalize_address(new_account)},
-        wait_for_finalized=wait_for_finalized,
-        timeout_ms=timeout_ms,
-        nonce=nonce,
-    )
-
-
-def delete_one_click_trading_account(
-    *,
-    substrate_ws: str,
-    evm_rpc_url: str,
-    private_key: str,
-    precompile_address: str,
-    account: str,
-    chain_id: Optional[int] = None,
-    gas_limit: Optional[int] = None,
-    max_fee_per_gas: Optional[int] = None,
-    max_priority_fee_per_gas: Optional[int] = None,
-    use_legacy: bool = False,
-    nonce: Optional[int] = None,
-    wait_for_finalized: bool = True,
-    timeout_ms: Optional[int] = None,
-) -> TxResult:
-    return _submit_subaccount_call(
-        substrate_ws=substrate_ws,
-        evm_rpc_url=evm_rpc_url,
-        private_key=private_key,
-        call_function="delete_one_click_trading_account",
-        call_params={"oct_account": normalize_address(account)},
-        wait_for_finalized=wait_for_finalized,
-        timeout_ms=timeout_ms,
-        nonce=nonce,
-    )
-
-
-def disable_one_click_trading_account(
-    *,
-    substrate_ws: str,
-    evm_rpc_url: str,
-    private_key: str,
-    precompile_address: str,
-    account: str,
-    chain_id: Optional[int] = None,
-    gas_limit: Optional[int] = None,
-    max_fee_per_gas: Optional[int] = None,
-    max_priority_fee_per_gas: Optional[int] = None,
-    use_legacy: bool = False,
-    nonce: Optional[int] = None,
-    wait_for_finalized: bool = True,
-    timeout_ms: Optional[int] = None,
-) -> TxResult:
-    return _submit_subaccount_call(
-        substrate_ws=substrate_ws,
-        evm_rpc_url=evm_rpc_url,
-        private_key=private_key,
-        call_function="update_oct_mode",
-        call_params={"address": normalize_address(account), "new_mode": "Disable"},
-        wait_for_finalized=wait_for_finalized,
-        timeout_ms=timeout_ms,
-        nonce=nonce,
-    )
-
-
-def enable_one_click_trading_account(
-    *,
-    substrate_ws: str,
-    evm_rpc_url: str,
-    private_key: str,
-    precompile_address: str,
-    account: str,
-    chain_id: Optional[int] = None,
-    gas_limit: Optional[int] = None,
-    max_fee_per_gas: Optional[int] = None,
-    max_priority_fee_per_gas: Optional[int] = None,
-    use_legacy: bool = False,
-    nonce: Optional[int] = None,
-    wait_for_finalized: bool = True,
-    timeout_ms: Optional[int] = None,
-) -> TxResult:
-    return _submit_subaccount_call(
-        substrate_ws=substrate_ws,
-        evm_rpc_url=evm_rpc_url,
-        private_key=private_key,
-        call_function="update_oct_mode",
-        call_params={"address": normalize_address(account), "new_mode": "PlaceOrCancelOrder"},
-        wait_for_finalized=wait_for_finalized,
-        timeout_ms=timeout_ms,
-        nonce=nonce,
-    )
-
-
 def set_delegate_account(
     *,
     substrate_ws: str,
     evm_rpc_url: str,
     private_key: str,
     precompile_address: str,
-    subaccount: str,
     delegate: str,
     name: str | bytes,
     valid_until: int,
@@ -243,16 +127,17 @@ def set_delegate_account(
     wait_for_finalized: bool = True,
     timeout_ms: Optional[int] = None,
 ) -> TxResult:
-    # `valid_until` is a wall-clock millisecond timestamp; the chain rejects
-    # past values with 19_34 DelegateExpiry. Re-setting an existing delegate
-    # updates its name/valid_until in place.
+    # Wallet-level delegate (chain runtime 190): applies to every subaccount
+    # owned by the signer; new delegates default to DelegateMode
+    # PlaceOrCancelOrder. `valid_until` is a wall-clock millisecond
+    # timestamp; the chain rejects past values with 19_34 DelegateExpiry.
+    # Re-setting an existing delegate updates its name/valid_until in place.
     return _submit_subaccount_call(
         substrate_ws=substrate_ws,
         evm_rpc_url=evm_rpc_url,
         private_key=private_key,
         call_function="set_delegate_account",
         call_params={
-            "subaccount": normalize_address(subaccount),
             "delegate": normalize_address(delegate),
             "name": _normalize_bytes(name),
             "valid_until": int(valid_until),
@@ -260,7 +145,55 @@ def set_delegate_account(
         wait_for_finalized=wait_for_finalized,
         timeout_ms=timeout_ms,
         nonce=nonce,
-        event_name="SubaccountDelegated",
+        event_name="DelegateAccountSet",
+    )
+
+
+_DELEGATE_MODE_VARIANTS = {
+    0: "PlaceOrCancelOrder",
+    1: "DepositOrWithdraw",
+    2: "UpdateSubaccount",
+    3: "Disable",
+}
+
+
+def update_delegate_mode(
+    *,
+    substrate_ws: str,
+    evm_rpc_url: str,
+    private_key: str,
+    precompile_address: str,
+    delegate: str,
+    new_mode: int | str,
+    chain_id: Optional[int] = None,
+    gas_limit: Optional[int] = None,
+    max_fee_per_gas: Optional[int] = None,
+    max_priority_fee_per_gas: Optional[int] = None,
+    use_legacy: bool = False,
+    nonce: Optional[int] = None,
+    wait_for_finalized: bool = True,
+    timeout_ms: Optional[int] = None,
+) -> TxResult:
+    # DelegateMode: 0=PlaceOrCancelOrder, 1=DepositOrWithdraw,
+    # 2=UpdateSubaccount, 3=Disable. Enabling a non-Disable mode on an
+    # expired delegate fails with 19_34 DelegateExpiry; unknown delegate
+    # fails with 19_37 DelegateAccountNotInit.
+    if isinstance(new_mode, str):
+        variant = new_mode
+    else:
+        variant = _DELEGATE_MODE_VARIANTS.get(int(new_mode))
+        if variant is None:
+            raise ValueError(f"unknown delegate mode: {new_mode}")
+    return _submit_subaccount_call(
+        substrate_ws=substrate_ws,
+        evm_rpc_url=evm_rpc_url,
+        private_key=private_key,
+        call_function="update_delegate_mode",
+        call_params={"address": normalize_address(delegate), "new_mode": variant},
+        wait_for_finalized=wait_for_finalized,
+        timeout_ms=timeout_ms,
+        nonce=nonce,
+        event_name="DelegateAccountModeUpdated",
     )
 
 
@@ -270,7 +203,6 @@ def remove_delegate_account(
     evm_rpc_url: str,
     private_key: str,
     precompile_address: str,
-    subaccount: str,
     delegate: str,
     chain_id: Optional[int] = None,
     gas_limit: Optional[int] = None,
@@ -286,11 +218,11 @@ def remove_delegate_account(
         evm_rpc_url=evm_rpc_url,
         private_key=private_key,
         call_function="remove_delegate_account",
-        call_params={"subaccount": normalize_address(subaccount), "delegate": normalize_address(delegate)},
+        call_params={"delegate": normalize_address(delegate)},
         wait_for_finalized=wait_for_finalized,
         timeout_ms=timeout_ms,
         nonce=nonce,
-        event_name="SubaccountDelegateRemoved",
+        event_name="DelegateAccountRemoved",
     )
 
 
@@ -491,39 +423,38 @@ def subaccount_info(
     return _decode_subaccount_info(info, layout)
 
 
-def one_click_trading_accounts_for(
+def delegate_accounts_for(
     *,
     evm_rpc_url: str,
     precompile_address: str,
     owner: str,
-) -> list[OneClickTradingInfo]:
+) -> list[DelegateInfo]:
+    """Wallet -> its Delegate Accounts (chain runtime 190 view)."""
     data = encode_call(
-        "oneClickTradingAccountsFor(address)",
+        "delegateAccountsFor(address)",
         ["address"],
         [normalize_address(owner)],
     )
     raw = evm_call(evm_rpc_url, precompile_address, data)
-    (accounts,) = decode_abi([f"{_ONE_CLICK_TRADING_TUPLE}[]"], raw)
-    return [
-        OneClickTradingInfo(
-            address=_decode_address(item[0]),
-            mode=int(item[1]),
-            create_time=int(item[2]),
-        )
-        for item in accounts
-    ]
+    (accounts,) = decode_abi([f"{_DELEGATE_TUPLE}[]"], raw)
+    return [_decode_delegate_info(item) for item in accounts]
 
 
-def delegate_accounts(
+def delegator_accounts_for(
     *,
     evm_rpc_url: str,
     precompile_address: str,
-    user: str,
-) -> list[SubaccountSummary]:
-    data = encode_call("delegateAccounts(address)", ["address"], [normalize_address(user)])
+    delegate: str,
+) -> list[str]:
+    """Delegate Account -> the wallets bound to it (DelegatorInfo[] view)."""
+    data = encode_call(
+        "delegatorAccountsFor(address)",
+        ["address"],
+        [normalize_address(delegate)],
+    )
     raw = evm_call(evm_rpc_url, precompile_address, data)
-    (accounts,) = decode_abi([f"{_SUMMARY_TUPLE}[]"], raw)
-    return [_decode_subaccount_summary(item) for item in accounts]
+    (accounts,) = decode_abi(["(address)[]"], raw)
+    return [_decode_address(item[0]) for item in accounts]
 
 
 def _submit_subaccount_tx(
@@ -726,6 +657,16 @@ def _decode_subaccount_summary(item: tuple) -> SubaccountSummary:
     return SubaccountSummary(subaccount=_decode_address(item[0]), name=_decode_bytes(item[1]))
 
 
+def _decode_delegate_info(item: tuple) -> DelegateInfo:
+    return DelegateInfo(
+        delegate_address=_decode_address(item[0]),
+        delegate_name=_decode_bytes(item[1]),
+        valid_until=int(item[2]),
+        mode=int(item[3]),
+        create_time=int(item[4]),
+    )
+
+
 def _decode_subaccount_info(info: tuple, layout: str) -> SubaccountInfo:
     if layout == "delegates_vec":
         # 8-field layout: authority, delegates vec, name, spot, borrow,
@@ -781,6 +722,32 @@ def _decode_subaccount_info(info: tuple, layout: str) -> SubaccountInfo:
             next_liquidation_id=int(info[9]),
             margin_strategy=int(info[10]),
         )
+    if layout == "v4":
+        # runtime 190: no delegate fields at all; delegates live in the
+        # delegateAccountsFor view now.
+        spot_positions = [
+            SubaccountSpotPosition(symbol=_decode_bytes(pos[0]), token_amount=int(pos[1]))
+            for pos in info[2]
+        ]
+        borrow_positions = [
+            SubaccountBorrowPosition(
+                lending_market_id=int(borrow[0]),
+                asset=_decode_bytes(borrow[1]),
+                amount=int(borrow[2]),
+                interest=int(borrow[3]),
+            )
+            for borrow in info[3]
+        ]
+        return SubaccountInfo(
+            authority=_decode_address(info[0]),
+            delegate="",
+            name=_decode_bytes(info[1]),
+            spot_positions=spot_positions,
+            borrow_positions=borrow_positions,
+            next_order_id=int(info[4]),
+            status=int(info[5]),
+            is_margin_trading_enabled=bool(info[6]),
+        )
 
     spot_positions = [
         SubaccountSpotPosition(symbol=_decode_bytes(pos[0]), token_amount=int(pos[1]))
@@ -812,6 +779,8 @@ def _decode_subaccount_info_tuple(raw: bytes) -> tuple[str, tuple]:
         ("delegates_vec", _ACCOUNT_INFO_DELEGATES_TUPLE),
         ("latest", _ACCOUNT_INFO_TUPLE),
         ("legacy_user", _USER_TUPLE_V1),
+        # fewest fields — must stay last (see _ACCOUNT_INFO_V4_TUPLE comment)
+        ("v4", _ACCOUNT_INFO_V4_TUPLE),
     )
     last_error: Exception | None = None
     for layout, tuple_type in candidates:
@@ -859,21 +828,31 @@ def _decode_bytes(value: bytes) -> str:
 
 
 _SUMMARY_TUPLE = "(address,bytes)"
-_ONE_CLICK_TRADING_TUPLE = "(address,uint8,uint32)"
 _BORROW_POSITION_TUPLE = "(uint8,bytes,uint128,uint128)"
 _SPOT_POSITION_TUPLE = "(bytes,uint128)"
 _OPTION_U64_TUPLE = "(bool,uint64)"
 _ACCOUNT_INFO_TUPLE = (
     f"(address,address,address,bytes,uint8,{_SPOT_POSITION_TUPLE}[],uint32,bool,{_OPTION_U64_TUPLE},uint32,uint8)"
 )
+# Chain runtime 190: DelegateInfo gained mode (uint8) + create_time (uint64)
+# and moved out of subaccountInfo into the delegateAccountsFor view.
+_DELEGATE_TUPLE = "(address,bytes,uint64,uint8,uint64)"
+_DELEGATE_TUPLE_V1 = "(address,bytes,uint64)"
 # Precompile layout with delegates vec (delegate -> DelegateInfo[]):
 # (authority, delegates, name, spot_positions, borrow_positions,
 #  next_order_id, status, is_margin_trading_enabled)
-_DELEGATE_TUPLE = "(address,bytes,uint64)"
 _ACCOUNT_INFO_DELEGATES_TUPLE = (
-    f"(address,{_DELEGATE_TUPLE}[],bytes,{_SPOT_POSITION_TUPLE}[],{_BORROW_POSITION_TUPLE}[],uint32,uint8,bool)"
+    f"(address,{_DELEGATE_TUPLE_V1}[],bytes,{_SPOT_POSITION_TUPLE}[],{_BORROW_POSITION_TUPLE}[],uint32,uint8,bool)"
 )
 _USER_TUPLE_V1 = (
     f"(address,address,bytes,{_SPOT_POSITION_TUPLE}[],{_BORROW_POSITION_TUPLE}[],uint32,uint8,bool)"
+)
+# Chain runtime 190 layout: delegates removed from subaccountInfo
+# (authority, name, spot_positions, borrow_positions, next_order_id,
+#  status, is_margin_trading_enabled). It has the FEWEST fields, so it must
+# stay LAST in the candidate list: older/wider data hard-fails on it by
+# head-count mismatch, while v4 data hard-fails every older candidate.
+_ACCOUNT_INFO_V4_TUPLE = (
+    f"(address,bytes,{_SPOT_POSITION_TUPLE}[],{_BORROW_POSITION_TUPLE}[],uint32,uint8,bool)"
 )
 _USER_STATS_TUPLE = f"({_SUMMARY_TUPLE}[],uint64,uint16,uint16)"

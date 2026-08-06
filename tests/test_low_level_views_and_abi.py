@@ -458,8 +458,11 @@ def test_spot_lending_subaccount_system_views(monkeypatch) -> None:
 
     subaccount_responses = [
         encode([_subaccount._USER_STATS_TUPLE], [([summary], 10, 2, 3)]),
-        encode([f"{_subaccount._ONE_CLICK_TRADING_TUPLE}[]"], [[(owner, 1, 777)]]),
-        encode([f"{_subaccount._SUMMARY_TUPLE}[]"], [[summary]]),
+        encode(
+            [f"{_subaccount._DELEGATE_TUPLE}[]"],
+            [[(owner, b"mm", 123, 1, 456)]],
+        ),
+        encode(["(address)[]"], [[(owner,)]]),
     ]
     monkeypatch.setattr(
         _subaccount,
@@ -469,12 +472,16 @@ def test_spot_lending_subaccount_system_views(monkeypatch) -> None:
     assert _subaccount.user_stats(
         evm_rpc_url="rpc", precompile_address=ADDR, address=owner
     ).number_of_sub_accounts == 2
-    assert _subaccount.one_click_trading_accounts_for(
+    delegates = _subaccount.delegate_accounts_for(
         evm_rpc_url="rpc", precompile_address=ADDR, owner=owner
-    )[0].mode == 1
-    assert _subaccount.delegate_accounts(
-        evm_rpc_url="rpc", precompile_address=ADDR, user=owner
-    )[0].name == "main"
+    )
+    assert delegates[0].mode == 1
+    assert delegates[0].valid_until == 123
+    assert delegates[0].create_time == 456
+    assert delegates[0].delegate_name == "mm"
+    assert _subaccount.delegator_accounts_for(
+        evm_rpc_url="rpc", precompile_address=ADDR, delegate=owner
+    )[0] == _subaccount._decode_address(owner)
 
     system_responses = [
         encode([_system._SYSTEM_ACCOUNT_TUPLE_V2], [(1, 2, [3], 4, True)]),

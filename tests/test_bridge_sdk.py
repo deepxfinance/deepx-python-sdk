@@ -1064,3 +1064,74 @@ def test_solana_address_to_bytes32() -> None:
         bridge_mod.solana_address_to_bytes32("0OIl")  # not base58 characters
     with pytest.raises(ValueError, match="32 bytes"):
         bridge_mod.solana_address_to_bytes32("1111")  # too short
+
+
+def test_bridge_in_logs_fetch_decode_and_wait(monkeypatch) -> None:
+    recipient = "0x" + "ab" * 20
+    data = encode(["bytes32", "uint256", "uint256"], [b"\x11" * 32, 3, 1_000_000])
+    log = {
+        "transactionHash": "0xbridgein",
+        "blockNumber": hex(123),
+        "data": "0x" + data.hex(),
+    }
+    rpc_calls: list[tuple[str, str, list[object]]] = []
+
+    def fake_rpc_call(rpc_url: str, method: str, params: list[object]) -> object:
+        rpc_calls.append((rpc_url, method, params))
+        return [log]
+
+    monkeypatch.setattr(bridge_mod, "_rpc_call", fake_rpc_call)
+    api = bridge_mod.BridgeApi(
+        rpc_url="https://rpc.example.com",
+        chain_id=11155111,
+        contract_address="0x" + "34" * 20,
+    )
+
+    logs = api.get_bridge_in_logs(recipient=recipient, from_block=100)
+    assert logs == [
+        {
+            "tx_hash": "0xbridgein",
+            "block_number": 123,
+            "tx_unique_identification": "0x" + "11" * 32,
+            "token_id": 3,
+            "amount": 1_000_000,
+        }
+    ]
+    params = rpc_calls[0][2][0]
+    assert params["address"] == "0x" + "34" * 20
+    assert params["topics"] == [
+        bridge_mod.BRIDGE_IN_EVENT_TOPIC,
+        "0x" + recipient[2:].rjust(64, "0"),
+    ]
+    assert params["fromBlock"] == hex(100)
+    assert params["toBlock"] == "latest"
+
+    # wait returns the first matching log
+    assert api.wait_bridge_in(recipient=recipient, interval_s=0)["token_id"] == 3
+
+    # timeout when nothing arrives
+    monkeypatch.setattr(bridge_mod, "_rpc_call", lambda *args: [])
+    with pytest.raises(TimeoutError, match="no BridgeIn event"):
+        api.wait_bridge_in(timeout_s=0, interval_s=0)
+
+    # transient RPC errors are retried, not raised
+    calls = {"n": 0}
+
+    def flaky_rpc_call(rpc_url: str, method: str, params: list[object]) -> object:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("boom")
+        return [log]
+
+    monkeypatch.setattr(bridge_mod, "_rpc_call", flaky_rpc_call)
+    assert api.wait_bridge_in(interval_s=0)["amount"] == 1_000_000
+
+
+def test_bridge_latest_block(monkeypatch) -> None:
+    monkeypatch.setattr(bridge_mod, "_rpc_call", lambda *args: "0x7b")
+    api = bridge_mod.BridgeApi(
+        rpc_url="https://rpc.example.com",
+        chain_id=11155111,
+        contract_address="0x" + "34" * 20,
+    )
+    assert api.latest_block() == 123

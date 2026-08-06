@@ -73,23 +73,20 @@ from ._spot_market import (
     user_active_spot_orders,
 )
 from ._subaccount import (
-    create_one_click_trading_account,
-    delete_one_click_trading_account,
+    delegate_accounts_for,
+    delegator_accounts_for,
     delete_subaccount,
-    delegate_accounts,
-    disable_one_click_trading_account,
-    enable_one_click_trading_account,
     initialize_subaccount,
     liquidate_by_market,
     liquidate_perp_by_transfer,
     liquidate_spot_by_transfer,
     no_op,
-    one_click_trading_accounts_for,
     rename_subaccount,
     remove_delegate_account,
     set_delegate_account,
     set_spot_margin,
     subaccount_info,
+    update_delegate_mode,
     user_stats,
 )
 from ._system import system_account
@@ -111,7 +108,6 @@ from ._tx_config import merge_tx_config_kwargs
 from ._types import (
     ActiveOrderInfo,
     CancelOrderResult,
-    OneClickTradingInfo,
     OraclePriceInfo,
     PerpMarketInfo,
     PerpOrderInfo,
@@ -2495,144 +2491,9 @@ class SubaccountClient(_EvmTransportClientMixin):
             timeout_ms=timeout_ms,
         )
 
-    def create_one_click_trading_account(
-        self,
-        *,
-        new_account: str,
-        quota: Optional[int] = None,
-        precompile_address: Optional[str] = None,
-        chain_id: Optional[int] = None,
-        gas_limit: Optional[int] = None,
-        max_fee_per_gas: Optional[int] = None,
-        max_priority_fee_per_gas: Optional[int] = None,
-        use_legacy: Optional[bool] = None,
-        nonce: Optional[int] = None,
-        wait_for_finalized: Optional[bool] = None,
-        timeout_ms: Optional[int] = None,
-    ) -> TxResult:
-        return create_one_click_trading_account(
-            substrate_ws=self._client.substrate_ws,
-            evm_rpc_url=self._client.evm_rpc_url,
-            private_key=self._client.private_key,
-            precompile_address=self._precompile_address(precompile_address),
-            new_account=new_account,
-            quota=quota,
-            **self._client._tx_kwargs(
-                chain_id=chain_id,
-                gas_limit=gas_limit,
-                max_fee_per_gas=max_fee_per_gas,
-                max_priority_fee_per_gas=max_priority_fee_per_gas,
-                use_legacy=use_legacy,
-                nonce=nonce,
-                use_nonce=True,
-                wait_for_finalized=wait_for_finalized,
-                timeout_ms=timeout_ms,
-            ),
-        )
-
-    def delete_one_click_trading_account(
-        self,
-        *,
-        account: str,
-        precompile_address: Optional[str] = None,
-        chain_id: Optional[int] = None,
-        gas_limit: Optional[int] = None,
-        max_fee_per_gas: Optional[int] = None,
-        max_priority_fee_per_gas: Optional[int] = None,
-        use_legacy: Optional[bool] = None,
-        nonce: Optional[int] = None,
-        wait_for_finalized: Optional[bool] = None,
-        timeout_ms: Optional[int] = None,
-    ) -> TxResult:
-        return delete_one_click_trading_account(
-            substrate_ws=self._client.substrate_ws,
-            evm_rpc_url=self._client.evm_rpc_url,
-            private_key=self._client.private_key,
-            precompile_address=self._precompile_address(precompile_address),
-            account=account,
-            **self._client._tx_kwargs(
-                chain_id=chain_id,
-                gas_limit=gas_limit,
-                max_fee_per_gas=max_fee_per_gas,
-                max_priority_fee_per_gas=max_priority_fee_per_gas,
-                use_legacy=use_legacy,
-                nonce=nonce,
-                use_nonce=True,
-                wait_for_finalized=wait_for_finalized,
-                timeout_ms=timeout_ms,
-            ),
-        )
-
-    def disable_one_click_trading_account(
-        self,
-        *,
-        account: str,
-        precompile_address: Optional[str] = None,
-        chain_id: Optional[int] = None,
-        gas_limit: Optional[int] = None,
-        max_fee_per_gas: Optional[int] = None,
-        max_priority_fee_per_gas: Optional[int] = None,
-        use_legacy: Optional[bool] = None,
-        nonce: Optional[int] = None,
-        wait_for_finalized: Optional[bool] = None,
-        timeout_ms: Optional[int] = None,
-    ) -> TxResult:
-        return disable_one_click_trading_account(
-            substrate_ws=self._client.substrate_ws,
-            evm_rpc_url=self._client.evm_rpc_url,
-            private_key=self._client.private_key,
-            precompile_address=self._precompile_address(precompile_address),
-            account=account,
-            **self._client._tx_kwargs(
-                chain_id=chain_id,
-                gas_limit=gas_limit,
-                max_fee_per_gas=max_fee_per_gas,
-                max_priority_fee_per_gas=max_priority_fee_per_gas,
-                use_legacy=use_legacy,
-                nonce=nonce,
-                use_nonce=True,
-                wait_for_finalized=wait_for_finalized,
-                timeout_ms=timeout_ms,
-            ),
-        )
-
-    def enable_one_click_trading_account(
-        self,
-        *,
-        account: str,
-        precompile_address: Optional[str] = None,
-        chain_id: Optional[int] = None,
-        gas_limit: Optional[int] = None,
-        max_fee_per_gas: Optional[int] = None,
-        max_priority_fee_per_gas: Optional[int] = None,
-        use_legacy: Optional[bool] = None,
-        nonce: Optional[int] = None,
-        wait_for_finalized: Optional[bool] = None,
-        timeout_ms: Optional[int] = None,
-    ) -> TxResult:
-        return enable_one_click_trading_account(
-            substrate_ws=self._client.substrate_ws,
-            evm_rpc_url=self._client.evm_rpc_url,
-            private_key=self._client.private_key,
-            precompile_address=self._precompile_address(precompile_address),
-            account=account,
-            **self._client._tx_kwargs(
-                chain_id=chain_id,
-                gas_limit=gas_limit,
-                max_fee_per_gas=max_fee_per_gas,
-                max_priority_fee_per_gas=max_priority_fee_per_gas,
-                use_legacy=use_legacy,
-                nonce=nonce,
-                use_nonce=True,
-                wait_for_finalized=wait_for_finalized,
-                timeout_ms=timeout_ms,
-            ),
-        )
-
     def set_delegate_account(
         self,
         *,
-        subaccount: str,
         delegate: str,
         name: str | bytes,
         valid_until: int,
@@ -2651,7 +2512,6 @@ class SubaccountClient(_EvmTransportClientMixin):
             evm_rpc_url=self._client.evm_rpc_url,
             private_key=self._client.private_key,
             precompile_address=self._precompile_address(precompile_address),
-            subaccount=subaccount,
             delegate=delegate,
             name=name,
             valid_until=valid_until,
@@ -2668,10 +2528,44 @@ class SubaccountClient(_EvmTransportClientMixin):
             ),
         )
 
+    def update_delegate_mode(
+        self,
+        *,
+        delegate: str,
+        new_mode: int | str,
+        precompile_address: Optional[str] = None,
+        chain_id: Optional[int] = None,
+        gas_limit: Optional[int] = None,
+        max_fee_per_gas: Optional[int] = None,
+        max_priority_fee_per_gas: Optional[int] = None,
+        use_legacy: Optional[bool] = None,
+        nonce: Optional[int] = None,
+        wait_for_finalized: Optional[bool] = None,
+        timeout_ms: Optional[int] = None,
+    ) -> TxResult:
+        return update_delegate_mode(
+            substrate_ws=self._client.substrate_ws,
+            evm_rpc_url=self._client.evm_rpc_url,
+            private_key=self._client.private_key,
+            precompile_address=self._precompile_address(precompile_address),
+            delegate=delegate,
+            new_mode=new_mode,
+            **self._client._tx_kwargs(
+                chain_id=chain_id,
+                gas_limit=gas_limit,
+                max_fee_per_gas=max_fee_per_gas,
+                max_priority_fee_per_gas=max_priority_fee_per_gas,
+                use_legacy=use_legacy,
+                nonce=nonce,
+                use_nonce=True,
+                wait_for_finalized=wait_for_finalized,
+                timeout_ms=timeout_ms,
+            ),
+        )
+
     def remove_delegate_account(
         self,
         *,
-        subaccount: str,
         delegate: str,
         precompile_address: Optional[str] = None,
         chain_id: Optional[int] = None,
@@ -2688,7 +2582,6 @@ class SubaccountClient(_EvmTransportClientMixin):
             evm_rpc_url=self._client.evm_rpc_url,
             private_key=self._client.private_key,
             precompile_address=self._precompile_address(precompile_address),
-            subaccount=subaccount,
             delegate=delegate,
             **self._client._tx_kwargs(
                 chain_id=chain_id,
@@ -2918,28 +2811,28 @@ class SubaccountClient(_EvmTransportClientMixin):
             address=address,
         )
 
-    def one_click_trading_accounts_for(
+    def delegate_accounts_for(
         self,
         *,
         owner: str,
         precompile_address: Optional[str] = None,
-    ) -> list[OneClickTradingInfo]:
-        return one_click_trading_accounts_for(
+    ) -> list[DelegateInfo]:
+        return delegate_accounts_for(
             evm_rpc_url=self._client.evm_rpc_url,
             precompile_address=self._precompile_address(precompile_address),
             owner=owner,
         )
 
-    def delegate_accounts(
+    def delegator_accounts_for(
         self,
         *,
-        user: str,
+        delegate: str,
         precompile_address: Optional[str] = None,
-    ) -> list[SubaccountSummary]:
-        return delegate_accounts(
+    ) -> list[str]:
+        return delegator_accounts_for(
             evm_rpc_url=self._client.evm_rpc_url,
             precompile_address=self._precompile_address(precompile_address),
-            user=user,
+            delegate=delegate,
         )
 
 @dataclass

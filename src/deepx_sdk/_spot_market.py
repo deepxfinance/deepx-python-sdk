@@ -22,9 +22,14 @@ from ._types import (
 
 
 def _spot_slippage_u8(value: int) -> int:
+    # Chain runtime 187+: a market order's slippage is validated on-chain
+    # against the pair's max_deviation_bps (default 500, per-pair sudo
+    # config, hard bound 10000) instead of the old fixed 0-99 percentage.
+    # Keep only the chain's hard bound here; the per-pair check happens
+    # on-chain (20_x InvalidSlippage).
     slippage = int(value)
-    if slippage < 0 or slippage >= 100:
-        raise ValueError("spot market slippage must be between 0 and 99")
+    if slippage < 0 or slippage > 10000:
+        raise ValueError("spot market slippage must be between 0 and 10000")
     return slippage
 
 
