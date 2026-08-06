@@ -378,28 +378,26 @@ def main() -> None:
 
     # Subaccount actions and views.
     unique = int(time.time() * 1000)
-    one_click = unique_h160("one-click", unique)
     delegate = unique_h160("delegate", unique)
     lifecycle = record(results, "subaccount_client.initialize_subaccount", lambda: client.subaccount_client.initialize_subaccount(name=f"codex-{unique}".encode(), timeout_ms=120_000))
     lifecycle_subaccount = event_subaccount(lifecycle)
     record(results, "subaccount_client.rename_subaccount", lambda: client.subaccount_client.rename_subaccount(subaccount=SUBACCOUNT, new_name=f"codex-renamed-{unique}".encode(), timeout_ms=30_000))
     if lifecycle_subaccount is not None:
-        record(results, "subaccount_client.set_delegate_account", lambda: client.subaccount_client.set_delegate_account(subaccount=lifecycle_subaccount, delegate=delegate, timeout_ms=60_000))
         record(results, "subaccount_client.set_spot_margin.true", lambda: client.subaccount_client.set_spot_margin(subaccount=lifecycle_subaccount, enable_spot_margin=True, timeout_ms=120_000))
         record(results, "subaccount_client.set_spot_margin.false", lambda: client.subaccount_client.set_spot_margin(subaccount=lifecycle_subaccount, enable_spot_margin=False, timeout_ms=120_000))
     else:
-        record_blocked(results, "subaccount_client.set_delegate_account", "initialize_subaccount did not return a new subaccount; cannot safely set delegate without mutating an existing user subaccount")
         record_blocked(results, "subaccount_client.set_spot_margin.true", "initialize_subaccount did not return a new subaccount; cannot safely toggle spot margin without mutating an existing user subaccount")
         record_blocked(results, "subaccount_client.set_spot_margin.false", "initialize_subaccount did not return a new subaccount; cannot safely toggle spot margin without mutating an existing user subaccount")
-    oct_create = record(results, "subaccount_client.create_one_click_trading_account", lambda: client.subaccount_client.create_one_click_trading_account(new_account=one_click, timeout_ms=60_000))
-    if oct_create is not None:
-        record(results, "subaccount_client.disable_one_click_trading_account", lambda: client.subaccount_client.disable_one_click_trading_account(account=one_click, timeout_ms=60_000))
-        record(results, "subaccount_client.enable_one_click_trading_account", lambda: client.subaccount_client.enable_one_click_trading_account(account=one_click, timeout_ms=60_000))
-        record(results, "subaccount_client.delete_one_click_trading_account", lambda: client.subaccount_client.delete_one_click_trading_account(account=one_click, timeout_ms=60_000))
+    # Wallet-level delegates (runtime 190): no subaccount binding, so they are
+    # safe to set/remove regardless of the lifecycle subaccount.
+    delegate_set = record(results, "subaccount_client.set_delegate_account", lambda: client.subaccount_client.set_delegate_account(delegate=delegate, name=f"codex-{unique}".encode(), valid_until=(unique + 86_400_000), timeout_ms=60_000))
+    if delegate_set is not None:
+        record(results, "subaccount_client.update_delegate_mode", lambda: client.subaccount_client.update_delegate_mode(delegate=delegate, new_mode=1, timeout_ms=60_000))
+        record(results, "subaccount_client.delegate_accounts_for", lambda: client.subaccount_client.delegate_accounts_for(owner=WALLET))
+        record(results, "subaccount_client.remove_delegate_account", lambda: client.subaccount_client.remove_delegate_account(delegate=delegate, timeout_ms=60_000))
     else:
-        record_blocked(results, "subaccount_client.disable_one_click_trading_account", "create_one_click_trading_account failed; cannot disable a non-created one-click account")
-        record_blocked(results, "subaccount_client.enable_one_click_trading_account", "create_one_click_trading_account failed; cannot enable a non-created one-click account")
-        record_blocked(results, "subaccount_client.delete_one_click_trading_account", "create_one_click_trading_account failed; cannot delete a non-created one-click account")
+        record_blocked(results, "subaccount_client.update_delegate_mode", "set_delegate_account failed; cannot update mode on a non-existent delegate")
+        record_blocked(results, "subaccount_client.remove_delegate_account", "set_delegate_account failed; cannot remove a non-existent delegate")
     if lifecycle_subaccount is not None:
         record(results, "subaccount_client.delete_subaccount", lambda: client.subaccount_client.delete_subaccount(subaccount=lifecycle_subaccount, timeout_ms=60_000))
     else:
@@ -424,8 +422,8 @@ def main() -> None:
     )
     record(results, "subaccount_client.user_stats", lambda: client.subaccount_client.user_stats(address=WALLET))
     record(results, "subaccount_client.subaccount_info", lambda: client.subaccount_client.subaccount_info(address=SUBACCOUNT))
-    record(results, "subaccount_client.one_click_trading_accounts_for", lambda: client.subaccount_client.one_click_trading_accounts_for(owner=WALLET))
-    record(results, "subaccount_client.delegate_accounts", lambda: client.subaccount_client.delegate_accounts(user=WALLET))
+    record(results, "subaccount_client.delegate_accounts_for", lambda: client.subaccount_client.delegate_accounts_for(owner=WALLET))
+    record(results, "subaccount_client.delegator_accounts_for", lambda: client.subaccount_client.delegator_accounts_for(delegate=WALLET))
 
     # System and lending.
     record(results, "system.system_account", lambda: client.system.system_account(address=signer))

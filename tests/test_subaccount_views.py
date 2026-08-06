@@ -57,11 +57,8 @@ def main() -> None:
         else:
             raise
 
-    oct_accounts = client.subaccount_client.one_click_trading_accounts_for(owner=resolved_owner)
-    print("one_click_trading_accounts_for:", oct_accounts)
-
-    delegates = client.subaccount_client.delegate_accounts(user=resolved_owner)
-    print("delegate_accounts:", delegates)
+    delegates = client.subaccount_client.delegate_accounts_for(owner=resolved_owner)
+    print("delegate_accounts_for:", delegates)
 
 
 if __name__ == "__main__":

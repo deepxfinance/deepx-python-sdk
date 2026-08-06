@@ -17,7 +17,7 @@ if "substrateinterface" not in sys.modules:
 from deepx_sdk import _subaccount
 
 
-def test_create_oct_uses_pallet_call_with_single_address(monkeypatch) -> None:
+def test_update_delegate_mode_uses_pallet_call(monkeypatch) -> None:
     captured: dict[str, Any] = {}
 
     def fake_submit_subaccount_call(**kwargs: Any) -> Any:
@@ -26,16 +26,17 @@ def test_create_oct_uses_pallet_call_with_single_address(monkeypatch) -> None:
 
     monkeypatch.setattr(_subaccount, "_submit_subaccount_call", fake_submit_subaccount_call)
 
-    _subaccount.create_one_click_trading_account(
+    _subaccount.update_delegate_mode(
         substrate_ws="ws://127.0.0.1:9944",
         evm_rpc_url="http://127.0.0.1:8545",
         private_key="0x" + "11" * 32,
         precompile_address="0x0000000000000000000000000000000000000451",
-        new_account="0x00000000000000000000000000000000000000aa",
-        quota=123,  # deprecated argument kept for compatibility.
+        delegate="0x00000000000000000000000000000000000000aa",
+        new_mode=1,
     )
 
-    assert captured["submit_kwargs"]["call_function"] == "create_one_click_trading_account"
+    assert captured["submit_kwargs"]["call_function"] == "update_delegate_mode"
     assert captured["submit_kwargs"]["call_params"] == {
-        "new": "0x00000000000000000000000000000000000000aa"
+        "address": "0x00000000000000000000000000000000000000aa",
+        "new_mode": "DepositOrWithdraw",
     }

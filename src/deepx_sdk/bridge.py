@@ -18,6 +18,11 @@ from ._native_py import _rpc_call
 from ._rpc_transport import DEFAULT_USER_AGENT
 from ._types import TxResult
 from .api import ApiClient
+
+# topic0 of MultiTokenBridge's BridgeIn(bytes32,uint256,uint256,address).
+BRIDGE_IN_EVENT_TOPIC = (
+    "0xd27dacda04d3d9b76b4b91db5d3aae546abc65744db0169e7d13ac4891b0bbd6"
+)
 from .units import from_base_unit, to_base_unit
 
 API_VERSION = "/internal/v1"
@@ -1076,6 +1081,82 @@ class BridgeApi:
         status = receipt.get("status")
         return status in (1, "0x1", "0x01", True)
 
+    def latest_block(self) -> int:
+        """eth_blockNumber on this chain."""
+        return int(_rpc_call(self.rpc_url, "eth_blockNumber", []), 16)
+
+    def get_bridge_in_logs(
+        self,
+        *,
+        recipient: str | None = None,
+        from_block: int = 0,
+        to_block: int | str = "latest",
+    ) -> list[dict[str, Any]]:
+        """Fetch and decode `BridgeIn` events emitted by this chain's bridge.
+
+        Destination-side delivery is done by the Bool Network relayer, not the
+        user, so after `bridge_out` these logs are how you confirm arrival.
+        `recipient` (EVM address) filters to a single receiver.
+        """
+        topics: list[Any] = [BRIDGE_IN_EVENT_TOPIC]
+        if recipient is not None:
+            topics.append("0x" + normalize_address(recipient)[2:].lower().rjust(64, "0"))
+        logs = _rpc_call(
+            self.rpc_url,
+            "eth_getLogs",
+            [
+                {
+                    "address": normalize_address(self.contract_address),
+                    "topics": topics,
+                    "fromBlock": hex(int(from_block)),
+                    "toBlock": to_block if isinstance(to_block, str) else hex(int(to_block)),
+                }
+            ],
+        )
+        results: list[dict[str, Any]] = []
+        for log in logs or []:
+            tx_id, token_id, amount = decode_abi(
+                ["bytes32", "uint256", "uint256"], bytes.fromhex(log["data"][2:])
+            )
+            results.append(
+                {
+                    "tx_hash": str(log["transactionHash"]),
+                    "block_number": int(log["blockNumber"], 16),
+                    "tx_unique_identification": "0x" + bytes(tx_id).hex(),
+                    "token_id": int(token_id),
+                    "amount": int(amount),
+                }
+            )
+        return results
+
+    def wait_bridge_in(
+        self,
+        *,
+        recipient: str | None = None,
+        from_block: int = 0,
+        timeout_s: float = 1800.0,
+        interval_s: float = 15.0,
+    ) -> dict[str, Any]:
+        """Poll `get_bridge_in_logs` until a matching BridgeIn appears.
+
+        Transient RPC errors are retried until the timeout; raises TimeoutError
+        when no event arrives within `timeout_s`.
+        """
+        deadline = time.monotonic() + float(timeout_s)
+        while True:
+            try:
+                logs = self.get_bridge_in_logs(recipient=recipient, from_block=from_block)
+            except Exception:
+                logs = []
+            if logs:
+                return logs[0]
+            if time.monotonic() >= deadline:
+                raise TimeoutError(
+                    f"no BridgeIn event within {timeout_s}s "
+                    f"(bridge={self.contract_address}, recipient={recipient})"
+                )
+            time.sleep(float(interval_s))
+
 
 @dataclass
 class BtcChannelApi(BridgeApi):
@@ -1173,6 +1254,7 @@ __all__ = [
     "BITCOIN_TESTNET_ADDRESS_TYPES",
     "BITCOIN_TESTNET_CHAIN_ID",
     "BITCOIN_TESTNET_FALLBACKS",
+    "BRIDGE_IN_EVENT_TOPIC",
     "BRIDGE_TOKEN_MAP",
     "BridgeApi",
     "BridgeFeeQuote",

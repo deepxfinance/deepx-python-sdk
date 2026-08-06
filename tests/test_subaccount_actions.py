@@ -410,122 +410,61 @@ def main() -> None:
         print_tx(res)
         return
 
-    if action == "create_oct":
-        account = require_env("OCT_ACCOUNT")
-        print("oct_account:", account)
-        quota_raw = os.environ.get("OCT_QUOTA", "").strip()
-        if quota_raw:
-            print("OCT_QUOTA is ignored by current precompile:", quota_raw)
-        from deepx_sdk._abi import encode_call, normalize_address
-        data = encode_call(
-            "createOneClickTradingAccount(address)",
-            ["address"],
-            [normalize_address(account)],
-        )
-        print_unsigned_tx_hash(
-            evm_rpc_url=evm_rpc_url,
-            private_key=private_key,
-            precompile_address=precompile,
-            data=data,
-            nonce_ms=nonce_ms,
-            gas_limit=gas_limit,
-        )
-        res = client.subaccount_client.create_one_click_trading_account(
-            new_account=account,
+    if action == "set_delegate":
+        account = require_env("DELEGATE_ACCOUNT")
+        print("delegate:", account)
+        name = os.environ.get("DELEGATE_NAME", "delegate").encode()
+        valid_until = int(os.environ.get("DELEGATE_VALID_UNTIL_MS", "0") or 0)
+        if not valid_until:
+            import time as _time
+
+            valid_until = int(_time.time() * 1000) + 86_400_000
+        res = client.subaccount_client.set_delegate_account(
+            delegate=account,
+            name=name,
+            valid_until=valid_until,
             nonce=nonce_ms,
             gas_limit=gas_limit,
             wait_for_finalized=wait_for_finalized,
             timeout_ms=timeout_ms,
         )
-        print("create_one_click_trading_account:", res)
+        print("set_delegate_account:", res)
         print_tx(res)
         return
 
-    if action == "delete_oct":
-        account = require_env("OCT_ACCOUNT")
-        from deepx_sdk._abi import encode_call, normalize_address
-        data = encode_call(
-            "deleteOneClickTradingAccount(address)",
-            ["address"],
-            [normalize_address(account)],
-        )
-        print_unsigned_tx_hash(
-            evm_rpc_url=evm_rpc_url,
-            private_key=private_key,
-            precompile_address=precompile,
-            data=data,
-            nonce_ms=nonce_ms,
-            gas_limit=gas_limit,
-        )
-        res = client.subaccount_client.delete_one_click_trading_account(
-            account=account,
+    if action == "remove_delegate":
+        account = require_env("DELEGATE_ACCOUNT")
+        res = client.subaccount_client.remove_delegate_account(
+            delegate=account,
             nonce=nonce_ms,
             gas_limit=gas_limit,
             wait_for_finalized=wait_for_finalized,
             timeout_ms=timeout_ms,
         )
-        print("delete_one_click_trading_account:", res)
+        print("remove_delegate_account:", res)
         print_tx(res)
         return
 
-    if action == "enable_oct":
-        account = require_env("OCT_ACCOUNT")
-        from deepx_sdk._abi import encode_call, normalize_address
-        data = encode_call(
-            "enableOnClickTradingAccount(address)",
-            ["address"],
-            [normalize_address(account)],
-        )
-        print_unsigned_tx_hash(
-            evm_rpc_url=evm_rpc_url,
-            private_key=private_key,
-            precompile_address=precompile,
-            data=data,
-            nonce_ms=nonce_ms,
-            gas_limit=gas_limit,
-        )
-        res = client.subaccount_client.enable_one_click_trading_account(
-            account=account,
+    if action == "update_delegate_mode":
+        account = require_env("DELEGATE_ACCOUNT")
+        mode = os.environ.get("DELEGATE_MODE", "0").strip()
+        new_mode: int | str = int(mode) if mode.isdigit() else mode
+        res = client.subaccount_client.update_delegate_mode(
+            delegate=account,
+            new_mode=new_mode,
             nonce=nonce_ms,
             gas_limit=gas_limit,
             wait_for_finalized=wait_for_finalized,
             timeout_ms=timeout_ms,
         )
-        print("enable_one_click_trading_account:", res)
-        print_tx(res)
-        return
-
-    if action == "disable_oct":
-        account = require_env("OCT_ACCOUNT")
-        from deepx_sdk._abi import encode_call, normalize_address
-        data = encode_call(
-            "disableOnClickTradingAccount(address)",
-            ["address"],
-            [normalize_address(account)],
-        )
-        print_unsigned_tx_hash(
-            evm_rpc_url=evm_rpc_url,
-            private_key=private_key,
-            precompile_address=precompile,
-            data=data,
-            nonce_ms=nonce_ms,
-            gas_limit=gas_limit,
-        )
-        res = client.subaccount_client.disable_one_click_trading_account(
-            account=account,
-            nonce=nonce_ms,
-            gas_limit=gas_limit,
-            wait_for_finalized=wait_for_finalized,
-            timeout_ms=timeout_ms,
-        )
-        print("disable_one_click_trading_account:", res)
+        print("update_delegate_mode:", res)
         print_tx(res)
         return
 
     raise RuntimeError(
         "Unknown SUBACCOUNT_ACTION. Use one of: initialize, delete, rename, set_delegate, "
-        "set_spot_margin, liquidate_perp_transfer, liquidate_spot_transfer, "
-        "liquidate_by_market, create_oct, delete_oct, enable_oct, disable_oct"
+        "remove_delegate, update_delegate_mode, set_spot_margin, "
+        "liquidate_perp_transfer, liquidate_spot_transfer, liquidate_by_market"
     )
 
 

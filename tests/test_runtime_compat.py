@@ -922,8 +922,10 @@ def test_spot_order_action_variants_and_validation(monkeypatch) -> None:
     with pytest.raises(ValueError, match="spot market slippage"):
         _spot_market.subaccount_place_market_order_buy_b_with_price(**base, slippage=-1)
 
+    # runtime 187+: 100 is valid now (on-chain bound is the pair's
+    # max_deviation_bps, default 500); only the hard bound 10000 is local.
     with pytest.raises(ValueError, match="spot market slippage"):
-        _spot_market.subaccount_place_market_order_buy_b_with_price(**base, slippage=100)
+        _spot_market.subaccount_place_market_order_buy_b_with_price(**base, slippage=10001)
 
     with pytest.raises(ValueError, match="invalid post_only"):
         _spot_market.subaccount_place_order_buy_b(**base, post_only=9)
@@ -1462,40 +1464,14 @@ def test_low_level_non_order_sdk_uses_pallet_calls_where_available(monkeypatch) 
             True,
         ),
         (
-            lambda: _subaccount.create_one_click_trading_account(**subacct, new_account=other),
-            "create_one_click_trading_account",
-            {"new": other},
-            False,
-        ),
-        (
-            lambda: _subaccount.delete_one_click_trading_account(**subacct, account=other),
-            "delete_one_click_trading_account",
-            {"oct_account": other},
-            False,
-        ),
-        (
-            lambda: _subaccount.disable_one_click_trading_account(**subacct, account=other),
-            "update_oct_mode",
-            {"address": other, "new_mode": "Disable"},
-            False,
-        ),
-        (
-            lambda: _subaccount.enable_one_click_trading_account(**subacct, account=other),
-            "update_oct_mode",
-            {"address": other, "new_mode": "PlaceOrCancelOrder"},
-            False,
-        ),
-        (
             lambda: _subaccount.set_delegate_account(
                 **subacct,
-                subaccount=subaccount,
                 delegate=other,
                 name=b"mm-bot",
                 valid_until=1781757000999,
             ),
             "set_delegate_account",
             {
-                "subaccount": subaccount,
                 "delegate": other,
                 "name": b"mm-bot",
                 "valid_until": 1781757000999,
@@ -1503,13 +1479,22 @@ def test_low_level_non_order_sdk_uses_pallet_calls_where_available(monkeypatch) 
             True,
         ),
         (
+            lambda: _subaccount.update_delegate_mode(
+                **subacct,
+                delegate=other,
+                new_mode=1,
+            ),
+            "update_delegate_mode",
+            {"address": other, "new_mode": "DepositOrWithdraw"},
+            True,
+        ),
+        (
             lambda: _subaccount.remove_delegate_account(
                 **subacct,
-                subaccount=subaccount,
                 delegate=other,
             ),
             "remove_delegate_account",
-            {"subaccount": subaccount, "delegate": other},
+            {"delegate": other},
             True,
         ),
         (
