@@ -323,7 +323,7 @@ class AsyncChainClient:
         substrate_ws_endpoints: Sequence[str] | None = None,
         private_key: str,
         subaccount: str,
-        net: str = "devnet",
+        net: str = "testnet",
         timeouts: TxTimeouts | None = None,
         recovery_config: RecoveryConfig | None = None,
         max_tracked_transactions: int = 1024,

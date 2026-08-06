@@ -47,7 +47,7 @@ from deepx_sdk import APIError, ChainError
 PRIVATE_KEY = require("PRIVATE_KEY")
 SUBACCOUNT = optional("SUBACCOUNT")  # leave blank on first run
 
-NET = optional("NET", "devnet")
+NET = optional("NET", "testnet")
 
 
 # ---------------------------------------------------------------------------

@@ -32,7 +32,7 @@ def _normalize_optional_str(value: Optional[str]) -> Optional[str]:
 @dataclass
 class ApiClient:
     base_url: Optional[str] = None
-    net: str = "devnet"
+    net: str = "testnet"
     timeout: int = 30
     user_agent: str = DEFAULT_USER_AGENT
     ws_base_url: Optional[str] = None

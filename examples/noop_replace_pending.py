@@ -55,7 +55,7 @@ PERP_PRICE = int(Decimal("1500") * (10 ** 6))  # far below mark -> rests on the 
 
 chain = dx.ChainClient(
     wait_for_finalized=False,  # devnet finalization stalls intermittently
-    net=optional("NET", "devnet"),
+    net=optional("NET", "testnet"),
     private_key=PRIVATE_KEY,
     subaccount=SUBACCOUNT,
 )
