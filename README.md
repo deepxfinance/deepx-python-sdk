@@ -149,6 +149,19 @@ synchronous submission may switch endpoints only while establishing the
 connection. Once extrinsic submission starts, the SDK does not replay the
 transaction on another endpoint because the first result may be ambiguous.
 
+**Self-healing while connected.** Reconnect recovery is not the only safety
+net. A watchdog (default every 5s) also covers failures that do not involve a
+disconnect: if the chain keeps producing blocks but no head notification
+arrives for ~15s — the heads subscription was dropped by a queue overflow or
+evicted server-side during a chain stall — the client re-subscribes and
+catches up via RPC. And any transaction still unresolved 60s after
+submission, despite full block visibility (typically a timestamp-nonce tx
+the node silently dropped), is moved to `ACTION_REQUIRED`, which releases
+its pool slot and tells you to reconcile by `tx_hash` / `cloid`. Note the
+two horizons deliberately differ: a wait timeout (`executed()` /
+`finalized()`) never mutates the ticket, only the much longer stale horizon
+does — so slow-but-successful inclusions are not falsely flagged.
+
 EVM JSON-RPC reads and transaction-preparation calls support an ordered HTTP
 endpoint list:
 

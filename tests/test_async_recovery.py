@@ -596,3 +596,143 @@ def test_recovery_gap_overflow_does_not_flag_fresh_pending() -> None:
         await recovery.close()
 
     asyncio.run(run())
+
+
+def _watchdog_config(**overrides: object) -> RecoveryConfig:
+    values: dict[str, object] = {
+        "watchdog_interval_s": 0.01,
+        "subscription_liveness_s": 0.03,
+        "stale_ms": 0,
+    }
+    values.update(overrides)
+    return RecoveryConfig(**values)  # type: ignore[arg-type]
+
+
+async def _wait_until(predicate: Any, timeout_s: float = 2.0) -> None:
+    loop = asyncio.get_event_loop()
+    deadline = loop.time() + timeout_s
+    while not predicate():
+        if loop.time() > deadline:
+            raise AssertionError("condition not met within timeout")
+        await asyncio.sleep(0.005)
+
+
+def test_watchdog_scans_and_flags_stale_when_heads_silent() -> None:
+    async def run() -> None:
+        transport = _RecoveryTransport()
+        encoder = _RecoveryEncoder()
+        tracker = TransactionTracker(transport, encoder)  # type: ignore[arg-type]
+        pending = await _submitted(tracker, transport)
+
+        subscribe_calls: list[str] = []
+        original_subscribe = transport.subscribe
+
+        async def counting_subscribe(method: str, params: list[object], handler: Any) -> str:
+            subscribe_calls.append(method)
+            return await original_subscribe(method, params, handler)
+
+        transport.subscribe = counting_subscribe  # type: ignore[method-assign]
+        recovery = RecoveryTracker(
+            transport, tracker, encoder, config=_watchdog_config()  # type: ignore[arg-type]
+        )
+        await recovery.start()
+        assert subscribe_calls.count("chain_subscribeNewHeads") == 1
+
+        # The chain advances but no head notifications arrive (the heads
+        # subscription is dead): the watchdog must scan AND re-subscribe.
+        transport.best_number = 12
+        await _wait_until(lambda: pending.status is TxStatus.RECONCILIATION_REQUIRED)
+        await _wait_until(
+            lambda: subscribe_calls.count("chain_subscribeNewHeads") == 2
+        )
+        assert transport.block_fetch_count >= 2  # walked blocks 11 and 12
+        await recovery.close()
+
+    asyncio.run(run())
+
+
+def test_watchdog_leaves_stalled_chain_alone() -> None:
+    async def run() -> None:
+        transport = _RecoveryTransport()
+        encoder = _RecoveryEncoder()
+        tracker = TransactionTracker(transport, encoder)  # type: ignore[arg-type]
+        pending = await _submitted(tracker, transport)
+
+        subscribe_calls: list[str] = []
+        original_subscribe = transport.subscribe
+
+        async def counting_subscribe(method: str, params: list[object], handler: Any) -> str:
+            subscribe_calls.append(method)
+            return await original_subscribe(method, params, handler)
+
+        transport.subscribe = counting_subscribe  # type: ignore[method-assign]
+        recovery = RecoveryTracker(
+            transport, tracker, encoder, config=_watchdog_config()  # type: ignore[arg-type]
+        )
+        await recovery.start()
+        fetches_after_start = transport.block_fetch_count
+
+        # The chain is genuinely stalled: the best number never advances, so
+        # no re-subscribe churn and no scan — nothing could have been missed.
+        await asyncio.sleep(0.1)
+        assert subscribe_calls.count("chain_subscribeNewHeads") == 1
+        assert transport.block_fetch_count == fetches_after_start
+        assert pending.status is TxStatus.SUBMITTED
+        await recovery.close()
+
+    asyncio.run(run())
+
+
+def test_head_driven_scan_flags_stale_pending() -> None:
+    async def run() -> None:
+        transport = _RecoveryTransport()
+        encoder = _RecoveryEncoder()
+        tracker = TransactionTracker(transport, encoder)  # type: ignore[arg-type]
+        pending = await _submitted(tracker, transport)
+        recovery = RecoveryTracker(
+            transport,
+            tracker,
+            encoder,  # type: ignore[arg-type]
+            config=_watchdog_config(watchdog_interval_s=3600.0),
+        )
+        await recovery.start()
+
+        # Healthy head flow: the tx is not in block 11, and with a zero stale
+        # horizon it must be flagged right after the covering scan completes.
+        transport.best_number = 11
+        await transport.notify("chain_subscribeNewHeads", {"number": hex(11)})
+        await _wait_until(lambda: pending.status is TxStatus.RECONCILIATION_REQUIRED)
+        await recovery.close()
+
+    asyncio.run(run())
+
+
+def test_watchdog_idle_when_healthy_and_nothing_pending() -> None:
+    async def run() -> None:
+        transport = _RecoveryTransport()
+        encoder = _RecoveryEncoder()
+        tracker = TransactionTracker(transport, encoder)  # type: ignore[arg-type]
+
+        request_calls: list[str] = []
+        original_request = transport.request
+
+        async def counting_request(method: str, params: list[object]) -> object:
+            request_calls.append(method)
+            return await original_request(method, params)
+
+        transport.request = counting_request  # type: ignore[method-assign]
+        recovery = RecoveryTracker(
+            transport,
+            tracker,
+            encoder,  # type: ignore[arg-type]
+            config=_watchdog_config(subscription_liveness_s=10.0),
+        )
+        await recovery.start()
+        calls_after_start = len(request_calls)
+
+        # Nothing pending and heads fresh: the watchdog costs zero RPCs.
+        await asyncio.sleep(0.06)
+        assert len(request_calls) == calls_after_start
+        await recovery.close()
+
+    asyncio.run(run())
