@@ -46,10 +46,10 @@ if not WALLET:
 # ---------------------------------------------------------------------------
 
 api = dx.ApiClient(
-    net="devnet",  # devnet | testnet
+    net=optional("NET", "testnet"),  # override via NET env for SDK development
     private_key=PRIVATE_KEY,  # used to personal-sign the claim message
 )
-chain = dx.ChainClient(net="devnet", private_key=PRIVATE_KEY, wait_for_finalized=False)
+chain = dx.ChainClient(net=optional("NET", "testnet"), private_key=PRIVATE_KEY, wait_for_finalized=False)
 
 
 # ---------------------------------------------------------------------------

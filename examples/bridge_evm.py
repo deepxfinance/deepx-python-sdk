@@ -1,4 +1,4 @@
-"""EVM -> EVM bridge example: deepx devnet (4845) -> Ethereum Sepolia.
+"""EVM -> EVM bridge example: DeepX (chain 4846) -> Ethereum Sepolia.
 
 DeepX's MultiTokenBridge is a Bool Network consumer. The flow:
 
@@ -35,14 +35,14 @@ from deepx_sdk.bridge import BridgeApi
 # ---------------------------------------------------------------------------
 # 1. Configuration
 #
-# Deployed bridge pair (devnet <-> sepolia). Override via env when testing
+# Deployed bridge pair (DeepX <-> sepolia). Override via env when testing
 # other deployments.
 # ---------------------------------------------------------------------------
 
-SRC_RPC = optional("BRIDGE_SRC_RPC", "https://devnet-rpc-new.deepx.fi")
-SRC_CHAIN_ID = int(optional("BRIDGE_SRC_CHAIN_ID", "4845"))
+SRC_RPC = optional("BRIDGE_SRC_RPC", "https://rpc-testnet.deepx.fi")
+SRC_CHAIN_ID = int(optional("BRIDGE_SRC_CHAIN_ID", "4846"))
 SRC_BRIDGE = optional(
-    "BRIDGE_SRC", "0xa32408eD9f1dFa1e2dc30143F9133Af31E8514ed"
+    "BRIDGE_SRC", "0x7db17a464c6ca9c1a81a25b4364d4f8e673f0049"
 )
 
 DST_RPC = optional(
@@ -50,10 +50,10 @@ DST_RPC = optional(
 )
 DST_CHAIN_ID = int(optional("BRIDGE_DST_CHAIN_ID", "11155111"))
 DST_BRIDGE = optional(
-    "BRIDGE_DST", "0x5303306D27A5A7e9C198000B752463107cf90E29"
+    "BRIDGE_DST", "0x2754a25ab32a6ec2e13b2ed984f0efdf5839493b"
 )
 
-SIGN_API_BASE = optional("SIGN_API_BASE", "https://rest-api-devnet.deepx.fi")
+SIGN_API_BASE = optional("SIGN_API_BASE", "https://rest-api-testnet.deepx.fi")
 
 PRIVATE_KEY = require("PRIVATE_KEY")
 AMOUNT_USDC = Decimal(optional("BRIDGE_AMOUNT_USDC", "1"))

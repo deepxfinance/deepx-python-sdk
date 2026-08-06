@@ -48,7 +48,7 @@ PERP_MARKET_ID = 3  # ETH-USDC perp on testnet
 
 chain = dx.ChainClient(
     wait_for_finalized=False,  # devnet finalization stalls intermittently
-    net=optional("NET", "devnet"),
+    net=optional("NET", "testnet"),
     private_key=PRIVATE_KEY,
     subaccount=SUBACCOUNT,
 )

@@ -235,11 +235,11 @@ def test_api_client_get_fails_over_but_post_does_not(
 
 def test_api_client_default_net_and_base_url() -> None:
     client = dx.ApiClient()
-    assert client.net == "devnet"
-    assert client.base_url == "https://rest-api-devnet.deepx.fi"
-    assert client.ws_base_url == "wss://ws-api-devnet.deepx.fi"
-    assert client.evm_rpc_url == "https://devnet-rpc-new.deepx.fi"
-    assert client.substrate_ws == "wss://devnet-rpc-new.deepx.fi"
+    assert client.net == "testnet"
+    assert client.base_url == "https://rest-api-testnet.deepx.fi"
+    assert client.ws_base_url == "wss://ws-api-testnet.deepx.fi"
+    assert client.evm_rpc_url == "https://rpc-testnet.deepx.fi"
+    assert client.substrate_ws == "wss://rpc-testnet.deepx.fi"
     assert not hasattr(client, "internal_v1")
     assert not hasattr(client, "v2")
     assert not hasattr(client, "v3")
@@ -356,9 +356,9 @@ def test_chain_client_default_net_and_urls() -> None:
         private_key="0x" + "11" * 32,
         subaccount="0x" + "33" * 20,
     )
-    assert client.net == "devnet"
-    assert client.evm_rpc_url == "https://devnet-rpc-new.deepx.fi"
-    assert client.substrate_ws == "wss://devnet-rpc-new.deepx.fi"
+    assert client.net == "testnet"
+    assert client.evm_rpc_url == "https://rpc-testnet.deepx.fi"
+    assert client.substrate_ws == "wss://rpc-testnet.deepx.fi"
     assert client.perp_precompile_address == ""
     assert client.spot_precompile_address == ""
     assert client.lending_precompile_address == ""

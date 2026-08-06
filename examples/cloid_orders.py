@@ -64,11 +64,11 @@ CLOID_BASE = 2**31 - 1 + (int(time.time()) % 1_000_000) * 8
 
 chain = dx.ChainClient(
     wait_for_finalized=False,  # devnet finalization stalls intermittently
-    net=optional("NET", "devnet"),
+    net=optional("NET", "testnet"),
     private_key=PRIVATE_KEY,
     subaccount=SUBACCOUNT,
 )
-api = dx.ApiClient(net=optional("NET", "devnet"), private_key=PRIVATE_KEY, subaccount=SUBACCOUNT)
+api = dx.ApiClient(net=optional("NET", "testnet"), private_key=PRIVATE_KEY, subaccount=SUBACCOUNT)
 
 
 # ---------------------------------------------------------------------------

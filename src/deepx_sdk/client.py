@@ -215,7 +215,7 @@ class ChainClient:
     subaccount: str = ""
     api_base_url: Optional[str] = None
     api_client: Any = None
-    net: str = "devnet"
+    net: str = "testnet"
     chain_id: Optional[int] = None
     gas_limit: Optional[int] = None
     max_fee_per_gas: Optional[int] = None

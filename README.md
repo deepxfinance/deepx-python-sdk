@@ -43,8 +43,8 @@ specific subaccount.
 ### First-time setup
 
 1. **Get a private key.** The SDK never generates wallets. Bring your own from
-   MetaMask, a hardware wallet, or `web3py`/`eth-account`. Fund it with gas on
-   the target network (use a faucet on devnet/testnet).
+   MetaMask, a hardware wallet, or `web3py`/`eth-account`. Fund it with gas
+   (use the network faucet).
 
 2. **Create a subaccount.** This is the first on-chain step and the only
    "account creation" the SDK performs:
@@ -53,7 +53,7 @@ specific subaccount.
     import deepx_sdk as dx
 
     # No subaccount yet — that's fine for initialize_subaccount.
-    chain = dx.ChainClient(net="testnet", private_key="0xYOUR_PRIVATE_KEY")
+    chain = dx.ChainClient(private_key="0xYOUR_PRIVATE_KEY")
 
     res = chain.subaccount_client.initialize_subaccount(name="my-first-subaccount")
     new_subaccount = res.event["subaccount"]  # read from the NewUserRecord event
@@ -63,7 +63,6 @@ specific subaccount.
 
     ```python
     chain = dx.ChainClient(
-        net="testnet",
         private_key="0xYOUR_PRIVATE_KEY",
         subaccount=new_subaccount,
     )
@@ -96,28 +95,22 @@ See [Error codes](#error-codes) for the full registry.
 import deepx_sdk as dx
 
 chain = dx.ChainClient(
-    net="devnet",  # devnet | testnet
     private_key="0x...",
-    perp_precompile_address="0x000000000000000000000000000000000000044E",
-    spot_precompile_address="0x000000000000000000000000000000000000044D",
-    lending_precompile_address="0x0000000000000000000000000000000000000450",
-    subaccount_precompile_address="0x0000000000000000000000000000000000000451",
-    system_precompile_address="0x0000000000000000000000000000000000000452",
     subaccount="0x...",
 )
-api = dx.ApiClient(net="devnet")  # devnet | testnet
+api = dx.ApiClient()
 sdk = dx.SDK(chain=chain, api=api)
 ```
 
 > **First time?** The SDK does not create wallets. See [Onboarding](#onboarding) below for the
 > full first-time setup (private key → subaccount → deposit → trade).
 
-`ChainClient` defaults to `net="devnet"` and auto-resolves RPC endpoints:
-
-- `devnet` -> `evm_rpc_url=https://devnet-rpc-new.deepx.fi`, `substrate_ws=wss://devnet-rpc-new.deepx.fi`
-- `testnet` -> `evm_rpc_url=https://rpc-testnet.deepx.fi`, `substrate_ws=wss://rpc-testnet.deepx.fi`
-
-You can still override with custom `evm_rpc_url` and `substrate_ws` when needed.
+Both clients connect to the DeepX network by default — endpoints are
+auto-resolved, nothing else to configure. Precompile addresses likewise have
+built-in defaults (see [Precompile defaults](#precompile-defaults)); you only
+pass them when targeting a custom deployment. Custom RPC endpoints (e.g. a
+self-hosted node or proxy) can be supplied via `evm_rpc_url` / `substrate_ws`
+or the ordered `*_endpoints` failover lists below.
 
 For ordered Substrate WebSocket failover, provide
 `substrate_ws_endpoints`. The first endpoint is the primary; initial connection
@@ -200,12 +193,8 @@ print(api.active_api_endpoint)
 are never automatically replayed after an ambiguous transport failure. HTTP
 429 and application-level 4xx responses also remain visible to the caller.
 
-`ApiClient` defaults to `net="devnet"` and auto-resolves `base_url` / `ws_base_url`:
-
-- `devnet` -> `base_url=https://rest-api-devnet.deepx.fi`, `ws_base_url=wss://ws-api-devnet.deepx.fi`
-- `testnet` -> `base_url=https://rest-api-testnet.deepx.fi`, `ws_base_url=wss://ws-api-testnet.deepx.fi`
-
-You can still override with a custom `base_url` or `ws_base_url` when needed.
+`ApiClient` likewise auto-resolves `base_url` / `ws_base_url` for the default
+network; you can override with a custom `base_url` or `ws_base_url` when needed.
 
 ## Transaction ticket lifecycle
 
@@ -596,7 +585,7 @@ chain.perp_market.effective_leverage_for(market_id=3)       # -> min(global, ove
 ```
 
 Each subaccount may hold at most `max_active_orders` open orders **per
-market** (devnet: 128; owner-configurable via `update_max_active_orders_num`,
+market** (currently 128; owner-configurable via `update_max_active_orders_num`,
 Stop orders exempt). Exceeding it fails with `22_4 TooManyActiveOrders`. The
 limit is on-chain configuration, not a constant — read it from
 `chain.perp_market.perp_markets(market_id=...).max_active_orders` (or the
@@ -983,7 +972,7 @@ per wallet). The on-chain view of the same quota is
 2\*\*32-1 = frozen).
 
 Quota can also be **bought** directly on-chain (`Lending.buy_quota`): cost is
-`QuoteAmountPerQuota × quota` in USDC (devnet: 500 base units = 0.0005 USDC
+`QuoteAmountPerQuota × quota` in USDC (currently 500 base units = 0.0005 USDC
 per quota). Paid from the signer's wallet by default, or from a subaccount's
 spot balance via `from_subaccount`. Note the extrinsic itself costs 1 quota,
 so buying N quota nets N−1.
@@ -1018,17 +1007,17 @@ between DeepX and other EVM chains. The flow:
 from deepx_sdk.bridge import BridgeApi
 
 src = BridgeApi(
-    rpc_url="https://devnet-rpc-new.deepx.fi",
-    chain_id=4845,
-    contract_address="0xa32408eD9f1dFa1e2dc30143F9133Af31E8514ed",
+    rpc_url="https://rpc-testnet.deepx.fi",
+    chain_id=4846,
+    contract_address="0x7db17a464c6ca9c1a81a25b4364d4f8e673f0049",
     private_key="0xYOUR_PRIVATE_KEY",
 )
 result = src.bridge_out_with_sign(
-    sign_api_base="https://rest-api-devnet.deepx.fi",  # authorizer service
-    dst_chain_id=11155111,                             # Ethereum Sepolia
-    amount=1_000_000,                                  # 1 USDC (6 decimals)
+    sign_api_base="https://rest-api-testnet.deepx.fi",  # authorizer service
+    dst_chain_id=11155111,                              # Ethereum Sepolia
+    amount=1_000_000,                                   # 1 USDC (6 decimals)
     dst_recipient="0xRECIPIENT_ON_SEPOLIA",
-    symbol="USDC",                                     # or token_id=3
+    symbol="USDC",                                      # or token_id=3
 )
 print(result["tx_hash"])
 
@@ -1036,19 +1025,19 @@ print(result["tx_hash"])
 dst = BridgeApi(
     rpc_url="https://ethereum-sepolia-rpc.publicnode.com",
     chain_id=11155111,
-    contract_address="0x5303306D27A5A7e9C198000B752463107cf90E29",
+    contract_address="0x2754a25ab32a6ec2e13b2ed984f0efdf5839493b",
 )
 event = dst.wait_bridge_in(recipient="0xRECIPIENT_ON_SEPOLIA",
                            from_block=dst.latest_block() - 20)
 print(event["amount"], event["tx_hash"])
 ```
 
-Current deployments (devnet pair):
+Current deployments:
 
 | Chain | Chain ID | Bridge |
 | ----- | -------- | ------ |
-| DeepX devnet | 4845 | `0xa32408eD9f1dFa1e2dc30143F9133Af31E8514ed` |
-| Ethereum Sepolia | 11155111 | `0x5303306D27A5A7e9C198000B752463107cf90E29` |
+| DeepX | 4846 | `0x7db17a464c6ca9c1a81a25b4364d4f8e673f0049` |
+| Ethereum Sepolia | 11155111 | `0x2754a25ab32a6ec2e13b2ed984f0efdf5839493b` |
 
 Token ids: `ETH=1, USDT=2, USDC=3, DAI=4, BNB=5, OKB=6` (`BRIDGE_TOKEN_MAP`).
 A token must be registered on **both** chains' bridges before it can be

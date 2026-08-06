@@ -58,13 +58,13 @@ SPOT_BASE_AMOUNT = int(Decimal("0.05") * (10 ** 18))   # 0.05 ETH
 
 chain = dx.ChainClient(
     wait_for_finalized=False,  # devnet finalization stalls intermittently
-    net=optional("NET", "devnet"),
+    net=optional("NET", "testnet"),
     private_key=PRIVATE_KEY,
     subaccount=SUBACCOUNT,
 )
 
 # Optional: API client for read-only queries and REST error path.
-api = dx.ApiClient(net=optional("NET", "devnet"))
+api = dx.ApiClient(net=optional("NET", "testnet"))
 
 
 # ---------------------------------------------------------------------------
