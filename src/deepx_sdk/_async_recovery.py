@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from dataclasses import dataclass
 from typing import Any
 
@@ -21,6 +22,20 @@ class RecoveryConfig:
     max_blocks: int = 256
     reconnect_initial_ms: int = 100
     reconnect_max_ms: int = 3_000
+    # Watchdog: drives catch-up scans on a timer so reconciliation keeps
+    # working when the heads subscription silently dies (dropped after a
+    # notification-queue overflow, or evicted server-side during a stall).
+    watchdog_interval_s: float = 5.0
+    # If RPC shows the chain advancing but no head notification arrived for
+    # this long, the heads subscription is presumed dead and re-established.
+    subscription_liveness_s: float = 15.0
+    # A pending transaction that stays unresolved this long — with full
+    # block visibility, i.e. the scanner could have seen its inclusion — is
+    # marked reconciliation-required so its pool slot is released and the
+    # caller is told to reconcile. Deliberately much larger than the
+    # inclusion wait timeout: slow-but-successful inclusions (degraded
+    # devnet has shown 30-50s) must not be falsely flagged.
+    stale_ms: int = 60_000
 
 
 class RecoveryTracker:
@@ -48,6 +63,9 @@ class RecoveryTracker:
         self._runtime_spec_version: int | None = None
         self._pending_best_number: int | None = None
         self._scan_task: asyncio.Task[None] | None = None
+        self._watchdog_task: asyncio.Task[None] | None = None
+        self._last_head_at: float | None = None
+        self._last_head_number: int | None = None
 
     async def start(self) -> None:
         if self._started:
@@ -63,7 +81,10 @@ class RecoveryTracker:
             self._handle_connection_state
         )
         await self._subscribe_all()
+        self._last_head_at = time.monotonic()
+        self._watchdog_task = asyncio.create_task(self._watchdog_loop())
         self._last_best_hash, self._last_best_number = await self._read_best_head()
+        self._last_head_number = self._last_best_number
         (
             self._last_finalized_hash,
             self._last_finalized_number,
@@ -89,8 +110,11 @@ class RecoveryTracker:
         self._closed = True
         scan_task = self._scan_task
         self._scan_task = None
-        if scan_task is not None and not scan_task.done():
-            scan_task.cancel()
+        watchdog_task = self._watchdog_task
+        self._watchdog_task = None
+        for task in (scan_task, watchdog_task):
+            if task is not None and not task.done():
+                task.cancel()
         self._transport.remove_connection_state_callback(
             self._handle_connection_state
         )
@@ -207,14 +231,108 @@ class RecoveryTracker:
             await self._tracker.resolve_block(block_hash)
             self._last_best_number = number
             self._last_best_hash = block_hash
+        self._flag_stale_pending(start, end)
+
+    def _flag_stale_pending(self, start: int, end: int) -> None:
+        # The scan just covered every block through `end`, so any transaction
+        # still pending beyond the stale horizon was NOT included (most often
+        # a timestamp-nonce tx the node silently dropped after it expired).
+        # Mark it reconciliation-required: this releases its pool slot via
+        # the client's status callback and tells the caller to reconcile by
+        # tx_hash/cloid instead of waiting forever.
+        stale = [
+            pending
+            for pending in self._tracker.pending_transactions
+            if int(pending.diagnostics()["elapsed_ms"]) >= self._config.stale_ms
+        ]
+        if not stale:
+            return
+        endpoint = getattr(
+            self._transport,
+            "endpoint",
+            "<configured endpoint>",
+        )
+        for pending in stale:
+            logger.warning(
+                "Pending transaction %s unresolved after %dms; marking "
+                "reconciliation-required",
+                getattr(pending, "tx_hash", "<unknown>"),
+                self._config.stale_ms,
+            )
+            self._tracker.mark_reconciliation_required(
+                pending,
+                missing_start=start,
+                missing_end=end,
+                endpoint=endpoint,
+            )
+
+    async def _watchdog_loop(self) -> None:
+        # Head-driven scans stop when the heads subscription silently dies.
+        # This timer keeps reconciliation alive through the same
+        # _scan_best_chain path, and re-subscribes when RPC shows the chain
+        # advancing while no head arrives. A chain that is genuinely stalled
+        # (best number not advancing) is left alone — no heads can arrive
+        # anyway, and the next iteration picks up the recovery for free.
+        while not self._closed:
+            await asyncio.sleep(self._config.watchdog_interval_s)
+            if self._closed:
+                return
+            last_head_at = self._last_head_at
+            silent_for = (
+                time.monotonic() - last_head_at if last_head_at is not None else 0.0
+            )
+            if (
+                silent_for < self._config.subscription_liveness_s
+                and not self._tracker.pending_transactions
+            ):
+                continue  # healthy and nothing to reconcile
+            try:
+                async with self._recovery_lock:
+                    if self._closed:
+                        return
+                    current_hash, current_number = await self._read_best_head()
+                    previous = self._last_best_number
+                    # The subscription is dead when it stayed silent for the
+                    # whole liveness window while the chain moved past the
+                    # last head it delivered. Check against the last HEAD
+                    # number (not last scan): a watchdog scan catching up
+                    # must not mask the fact that heads stopped arriving.
+                    last_head_number = self._last_head_number
+                    subscription_dead = (
+                        silent_for >= self._config.subscription_liveness_s
+                        and last_head_number is not None
+                        and current_number > last_head_number
+                    )
+                    if subscription_dead:
+                        logger.warning(
+                            "Heads subscription silent for %.1fs while the chain "
+                            "advanced from %d to %d; re-subscribing",
+                            silent_for,
+                            last_head_number,
+                            current_number,
+                        )
+                        await self._subscribe_all()
+                        self._last_head_at = time.monotonic()
+                        self._last_head_number = current_number
+                    if previous is None or current_number <= previous:
+                        continue
+                    await self._scan_best_chain(previous + 1, current_number)
+                    self._last_best_hash = current_hash
+                    self._last_best_number = current_number
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("Recovery watchdog iteration failed")
 
     async def _handle_new_head(self, update: object) -> None:
         # Must return fast: the transport drops the subscription when its
         # notification queue overflows (devnet produces ~14 heads/sec, and a
         # catch-up scan through a slow RPC link takes far longer per block).
+        self._last_head_at = time.monotonic()
         number = _head_number(update)
         if number is None:
             return
+        self._last_head_number = number
         self._pending_best_number = number
         if self._scan_task is None or self._scan_task.done():
             self._scan_task = asyncio.create_task(self._drain_best_scans())
