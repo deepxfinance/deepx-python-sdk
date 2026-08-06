@@ -80,7 +80,7 @@ async def main() -> None:
             "cloid": _cloid(),
         }
         async with dx.AsyncChainClient(
-            substrate_ws=_required_env("SUBSTRATE_WS"),
+            substrate_ws=os.environ.get("SUBSTRATE_WS", ""),
             private_key=_required_env("PRIVATE_KEY"),
             subaccount=_required_env("SUBACCOUNT"),
             print_state=True,

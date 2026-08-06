@@ -32,7 +32,7 @@ def _cloid() -> int:
 
 async def main() -> None:
     async with dx.AsyncChainClient(
-        substrate_ws=os.environ["SUBSTRATE_WS"],
+        substrate_ws=os.environ.get("SUBSTRATE_WS", ""),
         private_key=os.environ["PRIVATE_KEY"],
         subaccount=os.environ["SUBACCOUNT"],
     ) as client:

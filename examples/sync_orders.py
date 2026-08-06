@@ -34,7 +34,7 @@ def main() -> None:
     ticket: dx.SyncTransactionTicket | None = None
     try:
         with dx.ChainClient(
-            substrate_ws=os.environ["SUBSTRATE_WS"],
+            substrate_ws=os.environ.get("SUBSTRATE_WS", ""),
             private_key=os.environ["PRIVATE_KEY"],
             subaccount=os.environ["SUBACCOUNT"],
             print_state=True,  # Optional: print every state transition as JSON.

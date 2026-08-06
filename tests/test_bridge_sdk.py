@@ -1135,3 +1135,22 @@ def test_bridge_latest_block(monkeypatch) -> None:
         contract_address="0x" + "34" * 20,
     )
     assert api.latest_block() == 123
+
+
+def test_bridge_api_net_resolution() -> None:
+    default = bridge_mod.BridgeApi()
+    assert default.net == "testnet"
+    assert default.rpc_url == "https://rpc-testnet.deepx.fi"
+    assert default.chain_id == 4846
+    assert default.contract_address == "0x7db17a464c6ca9c1a81a25b4364d4f8e673f0049"
+
+    devnet = bridge_mod.BridgeApi(net="devnet")
+    assert devnet.chain_id == 4845
+    assert devnet.contract_address == "0xa32408eD9f1dFa1e2dc30143F9133Af31E8514ed"
+
+    custom = bridge_mod.BridgeApi(
+        rpc_url="https://x", chain_id=1, contract_address="0x" + "11" * 20
+    )
+    assert custom.rpc_url == "https://x"
+    assert custom.chain_id == 1
+    assert custom.contract_address == "0x" + "11" * 20

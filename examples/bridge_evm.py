@@ -35,15 +35,15 @@ from deepx_sdk.bridge import BridgeApi
 # ---------------------------------------------------------------------------
 # 1. Configuration
 #
-# Deployed bridge pair (DeepX <-> sepolia). Override via env when testing
-# other deployments.
+# The DeepX side (RPC, chain id, bridge contract, sign API) needs no
+# configuration. SDK development only: set the BRIDGE_SRC_* trio to point at
+# the internal deployment.
 # ---------------------------------------------------------------------------
 
-SRC_RPC = optional("BRIDGE_SRC_RPC", "https://rpc-testnet.deepx.fi")
-SRC_CHAIN_ID = int(optional("BRIDGE_SRC_CHAIN_ID", "4846"))
-SRC_BRIDGE = optional(
-    "BRIDGE_SRC", "0x7db17a464c6ca9c1a81a25b4364d4f8e673f0049"
-)
+SRC_RPC = optional("BRIDGE_SRC_RPC")
+SRC_CHAIN_ID = optional("BRIDGE_SRC_CHAIN_ID")
+SRC_BRIDGE = optional("BRIDGE_SRC")
+SIGN_API_BASE = optional("SIGN_API_BASE")
 
 DST_RPC = optional(
     "BRIDGE_DST_RPC", "https://ethereum-sepolia-rpc.publicnode.com"
@@ -52,8 +52,6 @@ DST_CHAIN_ID = int(optional("BRIDGE_DST_CHAIN_ID", "11155111"))
 DST_BRIDGE = optional(
     "BRIDGE_DST", "0x2754a25ab32a6ec2e13b2ed984f0efdf5839493b"
 )
-
-SIGN_API_BASE = optional("SIGN_API_BASE", "https://rest-api-testnet.deepx.fi")
 
 PRIVATE_KEY = require("PRIVATE_KEY")
 AMOUNT_USDC = Decimal(optional("BRIDGE_AMOUNT_USDC", "1"))
@@ -74,11 +72,12 @@ dst = BridgeApi(
     contract_address=DST_BRIDGE,
 )
 
+# Blank values fall back to the built-in deployment.
 src = BridgeApi(
-    rpc_url=SRC_RPC,
-    chain_id=SRC_CHAIN_ID,
-    contract_address=SRC_BRIDGE,
     private_key=PRIVATE_KEY,
+    rpc_url=SRC_RPC,
+    chain_id=int(SRC_CHAIN_ID) if SRC_CHAIN_ID.strip() else None,
+    contract_address=SRC_BRIDGE,
 )
 
 # record before bridging so the arrival event can never be missed
@@ -99,11 +98,11 @@ print(f"bridge fee: {fee} wei (source gas token)")
 
 print(f"bridging {AMOUNT_USDC} USDC: {sender} -> {recipient} on chain {DST_CHAIN_ID}")
 result = src.bridge_out_with_sign(
-    sign_api_base=SIGN_API_BASE,
     dst_chain_id=DST_CHAIN_ID,
     amount=amount,
     dst_recipient=recipient,
     token_id=USDC_TOKEN_ID,
+    sign_api_base=SIGN_API_BASE or None,
     auto_approve=True,  # sends approve(tx) first when allowance is insufficient
     wait=False,         # we watch the destination chain ourselves below
 )

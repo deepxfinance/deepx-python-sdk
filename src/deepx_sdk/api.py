@@ -14,6 +14,7 @@ from ._errors import RESTError, RPCError, parse_api_error_code
 from ._network import (
     network_config,
     normalize_net,
+    resolve_net,
     resolve_ordered_endpoints,
 )
 from ._rpc_transport import DEFAULT_USER_AGENT, RpcEndpointPool
@@ -32,7 +33,7 @@ def _normalize_optional_str(value: Optional[str]) -> Optional[str]:
 @dataclass
 class ApiClient:
     base_url: Optional[str] = None
-    net: str = "testnet"
+    net: Optional[str] = None
     timeout: int = 30
     user_agent: str = DEFAULT_USER_AGENT
     ws_base_url: Optional[str] = None
@@ -61,7 +62,7 @@ class ApiClient:
     def __post_init__(self) -> None:
         from .api_v1 import V1Client
 
-        resolved_net = normalize_net(self.net)
+        resolved_net = resolve_net(self.net)
         config = network_config(resolved_net)
         self.net = resolved_net
 

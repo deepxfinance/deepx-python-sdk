@@ -44,7 +44,7 @@ from deepx_sdk import APIError, ChainError
 PRIVATE_KEY = require("PRIVATE_KEY")
 SUBACCOUNT = require("SUBACCOUNT")
 
-PERP_MARKET_ID = 3  # ETH-USDC perp on testnet
+PERP_MARKET_ID = 3  # ETH-USDC perp market
 PERP_SIZE = int(Decimal("0.01") * (10 ** 18))
 PERP_PRICE = int(Decimal("1500") * (10 ** 6))  # far below mark -> rests on the book
 
@@ -54,10 +54,12 @@ PERP_PRICE = int(Decimal("1500") * (10 ** 6))  # far below mark -> rests on the 
 # ---------------------------------------------------------------------------
 
 chain = dx.ChainClient(
-    wait_for_finalized=False,  # devnet finalization stalls intermittently
-    net=optional("NET", "testnet"),
+    wait_for_finalized=False,  # finalization can stall; don't block on it
     private_key=PRIVATE_KEY,
     subaccount=SUBACCOUNT,
+    # SDK development only: point these at the internal deployment.
+    substrate_ws=optional("SUBSTRATE_WS"),
+    evm_rpc_url=optional("EVM_RPC_URL"),
 )
 
 

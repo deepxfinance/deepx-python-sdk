@@ -45,7 +45,7 @@ from deepx_sdk import APIError, ChainError
 PRIVATE_KEY = require("PRIVATE_KEY")
 SUBACCOUNT = require("SUBACCOUNT")
 
-PERP_MARKET_ID = 3  # ETH-USDC perp on testnet
+PERP_MARKET_ID = 3  # ETH-USDC perp market
 SPOT_PAIR = "0x950c1bb15508369148679bf2921417929f1465c068c4b22a980c3c23535846c0"  # ETH/USDC spot
 
 PERP_SIZE = int(Decimal("0.01") * (10 ** 18))       # 0.01 ETH
@@ -63,12 +63,14 @@ CLOID_BASE = 2**31 - 1 + (int(time.time()) % 1_000_000) * 8
 # ---------------------------------------------------------------------------
 
 chain = dx.ChainClient(
-    wait_for_finalized=False,  # devnet finalization stalls intermittently
-    net=optional("NET", "testnet"),
+    wait_for_finalized=False,  # finalization can stall; don't block on it
     private_key=PRIVATE_KEY,
     subaccount=SUBACCOUNT,
+    # SDK development only: point these at the internal deployment.
+    substrate_ws=optional("SUBSTRATE_WS"),
+    evm_rpc_url=optional("EVM_RPC_URL"),
 )
-api = dx.ApiClient(net=optional("NET", "testnet"), private_key=PRIVATE_KEY, subaccount=SUBACCOUNT)
+api = dx.ApiClient(base_url=optional("API_BASE_URL"), private_key=PRIVATE_KEY, subaccount=SUBACCOUNT)
 
 
 # ---------------------------------------------------------------------------
