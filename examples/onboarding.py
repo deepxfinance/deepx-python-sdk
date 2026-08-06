@@ -47,7 +47,6 @@ from deepx_sdk import APIError, ChainError
 PRIVATE_KEY = require("PRIVATE_KEY")
 SUBACCOUNT = optional("SUBACCOUNT")  # leave blank on first run
 
-NET = optional("NET", "testnet")
 
 
 # ---------------------------------------------------------------------------
@@ -63,10 +62,11 @@ NET = optional("NET", "testnet")
 
 def step1_create_first_subaccount() -> str:
     chain = dx.ChainClient(
-    wait_for_finalized=False,  # devnet finalization stalls intermittently
-        net=NET,
         private_key=PRIVATE_KEY,
+        wait_for_finalized=False,
         # subaccount intentionally omitted
+        substrate_ws=optional("SUBSTRATE_WS"),  # SDK development only
+        evm_rpc_url=optional("EVM_RPC_URL"),
     )
 
     res = chain.subaccount_client.initialize_subaccount(name="my-first-subaccount")
@@ -86,10 +86,11 @@ def step1_create_first_subaccount() -> str:
 
 def step2_verify_subaccount(subaccount: str) -> None:
     chain = dx.ChainClient(
-    wait_for_finalized=False,  # devnet finalization stalls intermittently
-        net=NET,
         private_key=PRIVATE_KEY,
         subaccount=subaccount,
+        wait_for_finalized=False,
+        substrate_ws=optional("SUBSTRATE_WS"),  # SDK development only
+        evm_rpc_url=optional("EVM_RPC_URL"),
     )
 
     info = chain.subaccount_client.subaccount_info(address=subaccount)
@@ -104,7 +105,12 @@ def step2_verify_subaccount(subaccount: str) -> None:
 # ---------------------------------------------------------------------------
 
 def step3_create_second_subaccount() -> str:
-    chain = dx.ChainClient(net=NET, private_key=PRIVATE_KEY, wait_for_finalized=False)
+    chain = dx.ChainClient(
+        private_key=PRIVATE_KEY,
+        wait_for_finalized=False,
+        substrate_ws=optional("SUBSTRATE_WS"),  # SDK development only
+        evm_rpc_url=optional("EVM_RPC_URL"),
+    )
     res = chain.subaccount_client.initialize_subaccount(name="my-second-subaccount")
     second = res.event["subaccount"]
     print(f"  second subaccount: {second}")
@@ -120,7 +126,12 @@ def step3_create_second_subaccount() -> str:
 # ---------------------------------------------------------------------------
 
 def step4_list_all_active_orders(owner: str) -> None:
-    chain = dx.ChainClient(net=NET, private_key=PRIVATE_KEY, wait_for_finalized=False)
+    chain = dx.ChainClient(
+        private_key=PRIVATE_KEY,
+        wait_for_finalized=False,
+        substrate_ws=optional("SUBSTRATE_WS"),  # SDK development only
+        evm_rpc_url=optional("EVM_RPC_URL"),
+    )
     orders = chain.perp_market.user_active_orders(user=owner)
     print(f"  total active perp orders: {len(orders)}")
     for o in orders:
@@ -137,10 +148,11 @@ def step4_list_all_active_orders(owner: str) -> None:
 
 def step5_delete_subaccount(subaccount: str) -> None:
     chain = dx.ChainClient(
-    wait_for_finalized=False,  # devnet finalization stalls intermittently
-        net=NET,
         private_key=PRIVATE_KEY,
         subaccount=subaccount,
+        wait_for_finalized=False,
+        substrate_ws=optional("SUBSTRATE_WS"),  # SDK development only
+        evm_rpc_url=optional("EVM_RPC_URL"),
     )
     res = chain.subaccount_client.delete_subaccount(subaccount=subaccount)
     print(f"  deleted subaccount={subaccount} tx_hash={res.tx_hash}")

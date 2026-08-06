@@ -29,16 +29,16 @@ from deepx_sdk import APIError, ChainError
 # 1. Credentials and market constants
 #
 # Credentials come from ``examples/.env`` (see ``examples/.env.example``). Public values (market ids,
-# precompile addresses) are real testnet constants and can stay as-is.
+# precompile addresses) are real network constants and can stay as-is.
 # ---------------------------------------------------------------------------
 
 PRIVATE_KEY = require("PRIVATE_KEY")
 SUBACCOUNT = require("SUBACCOUNT")
 
-# ETH-USDC perp market id on testnet (from README "ETH-USDC examples").
+# ETH-USDC perp market id (from README "ETH-USDC examples").
 PERP_MARKET_ID = 3
 
-# Spot pair bytes32 for ETH/USDC on testnet.
+# Spot pair bytes32 for ETH/USDC.
 SPOT_PAIR = "0x950c1bb15508369148679bf2921417929f1465c068c4b22a980c3c23535846c0"
 
 # Amount denominated in base units (wei / 1e18 for ETH, 1e6 for USDC).
@@ -57,14 +57,16 @@ SPOT_BASE_AMOUNT = int(Decimal("0.05") * (10 ** 18))   # 0.05 ETH
 # ---------------------------------------------------------------------------
 
 chain = dx.ChainClient(
-    wait_for_finalized=False,  # devnet finalization stalls intermittently
-    net=optional("NET", "testnet"),
+    wait_for_finalized=False,  # finalization can stall; don't block on it
     private_key=PRIVATE_KEY,
     subaccount=SUBACCOUNT,
+    # SDK development only: point these at the internal deployment.
+    substrate_ws=optional("SUBSTRATE_WS"),
+    evm_rpc_url=optional("EVM_RPC_URL"),
 )
 
 # Optional: API client for read-only queries and REST error path.
-api = dx.ApiClient(net=optional("NET", "testnet"))
+api = dx.ApiClient(base_url=optional("API_BASE_URL"))
 
 
 # ---------------------------------------------------------------------------

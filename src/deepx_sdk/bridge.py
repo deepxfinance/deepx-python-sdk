@@ -15,6 +15,7 @@ from ._errors import RESTError
 from ._evm import evm_call
 from ._native import build_signed_tx
 from ._native_py import _rpc_call
+from ._network import network_config, resolve_net
 from ._rpc_transport import DEFAULT_USER_AGENT
 from ._types import TxResult
 from .api import ApiClient
@@ -741,10 +742,29 @@ def _wait_bridge_received(
 
 @dataclass
 class BridgeApi:
-    rpc_url: str
-    chain_id: int
-    contract_address: str
+    """MultiTokenBridge client.
+
+    With no arguments it targets the default DeepX network — RPC endpoint,
+    chain id, and bridge contract all resolve from `net`. Pass explicit
+    `rpc_url` / `chain_id` / `contract_address` to override (e.g. for the
+    external side of a bridge pair such as Sepolia).
+    """
+
+    rpc_url: str | None = None
+    chain_id: int | None = None
+    contract_address: str | None = None
     private_key: str | None = None
+    net: str | None = None
+
+    def __post_init__(self) -> None:
+        self.net = resolve_net(self.net)
+        config = network_config(self.net)
+        if _is_blank(self.rpc_url):
+            self.rpc_url = config.evm_rpc_url
+        if self.chain_id is None:
+            self.chain_id = config.chain_id
+        if _is_blank(self.contract_address):
+            self.contract_address = config.bridge_contract
 
     def get_bridge_fee(
         self,
@@ -934,10 +954,10 @@ class BridgeApi:
     def bridge_out_with_sign(
         self,
         *,
-        sign_api_base: str,
         dst_chain_id: int,
         amount: int,
         dst_recipient: str | bytes | bytearray | memoryview,
+        sign_api_base: str | None = None,
         token_id: int | None = None,
         symbol: str | None = None,
         sender: str | None = None,
@@ -976,6 +996,8 @@ class BridgeApi:
         resolved_private_key = private_key or self.private_key
         if _is_blank(resolved_private_key):
             raise ValueError("private_key is required")
+        # Defaults to the network's REST API; override for custom deployments.
+        resolved_sign_api_base = sign_api_base or network_config(self.net).api_base_url
         if sender is None:
             sender = _evm_address_from_key(str(resolved_private_key))
         resolved_refund = refund_address or sender
@@ -1009,7 +1031,7 @@ class BridgeApi:
                 "custom_data_hex": custom_data if isinstance(custom_data, str) else "0x" + _normalize_hex_bytes(custom_data).hex(),
             },
         }
-        sign_result = fetch_sign_bridge_out_signature(sign_api_base, sign_body, int(dst_chain_id))
+        sign_result = fetch_sign_bridge_out_signature(resolved_sign_api_base, sign_body, int(dst_chain_id))
         if sign_result.get("matches_authorizer") is False:
             raise ValueError("sign-bridge response does not match the authorizer key")
 

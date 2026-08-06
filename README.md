@@ -5,8 +5,13 @@ Substrate `ethereum.transact` using a pure-Python implementation.
 
 Clients:
 
-- `ChainClient` for on-chain calls.
-- `ApiClient` for HTTP APIs (`v1`).
+- `AsyncChainClient` — the recommended client for trading: async transaction
+  tickets, self-healing subscriptions, and pool management. Use it for market
+  making and anything latency-sensitive.
+- `ChainClient` — synchronous on-chain client for scripts, onboarding, and
+  low-frequency operations.
+- `ApiClient` — REST client for market data and the operations the chain
+  clients don't cover.
 - `SDK` as a thin wrapper holding both clients.
 
 ## Install
@@ -1006,18 +1011,14 @@ between DeepX and other EVM chains. The flow:
 ```python
 from deepx_sdk.bridge import BridgeApi
 
-src = BridgeApi(
-    rpc_url="https://rpc-testnet.deepx.fi",
-    chain_id=4846,
-    contract_address="0x7db17a464c6ca9c1a81a25b4364d4f8e673f0049",
-    private_key="0xYOUR_PRIVATE_KEY",
-)
+# RPC endpoint, chain id, and bridge contract resolve from the network
+# registry — nothing to configure for the DeepX side.
+src = BridgeApi(private_key="0xYOUR_PRIVATE_KEY")
 result = src.bridge_out_with_sign(
-    sign_api_base="https://rest-api-testnet.deepx.fi",  # authorizer service
-    dst_chain_id=11155111,                              # Ethereum Sepolia
-    amount=1_000_000,                                   # 1 USDC (6 decimals)
+    dst_chain_id=11155111,                # Ethereum Sepolia
+    amount=1_000_000,                     # 1 USDC (6 decimals)
     dst_recipient="0xRECIPIENT_ON_SEPOLIA",
-    symbol="USDC",                                      # or token_id=3
+    symbol="USDC",                        # or token_id=3
 )
 print(result["tx_hash"])
 

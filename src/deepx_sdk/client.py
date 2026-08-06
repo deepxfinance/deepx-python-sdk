@@ -95,6 +95,7 @@ from ._market_resolver import MarketResolver
 from ._network import (
     network_config,
     normalize_net,
+    resolve_net,
     resolve_ordered_endpoints,
     resolve_substrate_ws_endpoints,
 )
@@ -215,7 +216,7 @@ class ChainClient:
     subaccount: str = ""
     api_base_url: Optional[str] = None
     api_client: Any = None
-    net: str = "testnet"
+    net: Optional[str] = None
     chain_id: Optional[int] = None
     gas_limit: Optional[int] = None
     max_fee_per_gas: Optional[int] = None
@@ -280,7 +281,7 @@ class ChainClient:
                 "node_pool_limit_per_account "
                 f"({self.node_pool_limit_per_account})"
             )
-        resolved_net = normalize_net(self.net)
+        resolved_net = resolve_net(self.net)
         config = network_config(resolved_net)
         self.net = resolved_net
 

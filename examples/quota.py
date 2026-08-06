@@ -46,10 +46,14 @@ if not WALLET:
 # ---------------------------------------------------------------------------
 
 api = dx.ApiClient(
-    net=optional("NET", "testnet"),  # override via NET env for SDK development
     private_key=PRIVATE_KEY,  # used to personal-sign the claim message
 )
-chain = dx.ChainClient(net=optional("NET", "testnet"), private_key=PRIVATE_KEY, wait_for_finalized=False)
+chain = dx.ChainClient(
+    private_key=PRIVATE_KEY,
+    wait_for_finalized=False,
+    substrate_ws=optional("SUBSTRATE_WS"),  # SDK development only
+    evm_rpc_url=optional("EVM_RPC_URL"),
+)
 
 
 # ---------------------------------------------------------------------------
@@ -75,7 +79,7 @@ def show_quota() -> None:
 # ---------------------------------------------------------------------------
 # 4. Buy quota directly on-chain (Lending.buy_quota)
 #
-# Cost = QuoteAmountPerQuota x quota in USDC (devnet: 500 base units per
+# Cost = QuoteAmountPerQuota x quota in USDC (currently 500 base units per
 # quota). Pays from the signer's wallet by default; pass from_subaccount to
 # pay from a subaccount's spot USDC balance instead.
 # ---------------------------------------------------------------------------

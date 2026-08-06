@@ -14,6 +14,7 @@ from ._errors import ValidationError
 from ._network import (
     network_config,
     normalize_net,
+    resolve_net,
     resolve_substrate_ws_endpoints,
 )
 from ._pending_tx import PendingTransaction, TxStatus, TxTimeouts
@@ -323,7 +324,7 @@ class AsyncChainClient:
         substrate_ws_endpoints: Sequence[str] | None = None,
         private_key: str,
         subaccount: str,
-        net: str = "testnet",
+        net: str | None = None,
         timeouts: TxTimeouts | None = None,
         recovery_config: RecoveryConfig | None = None,
         max_tracked_transactions: int = 1024,
@@ -337,8 +338,8 @@ class AsyncChainClient:
         transaction_listener: TransactionListener | None = None,
         component_factory: ComponentFactory | None = None,
     ) -> None:
-        config = network_config(normalize_net(net))
-        self.net = normalize_net(net)
+        self.net = resolve_net(net)
+        config = network_config(self.net)
         self.substrate_ws_endpoints = resolve_substrate_ws_endpoints(
             substrate_ws,
             substrate_ws_endpoints,
