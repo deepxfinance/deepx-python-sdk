@@ -199,6 +199,15 @@ You can still override with a custom `base_url` or `ws_base_url` when needed.
 Transaction tickets work out of the box, including WebSocket connections
 routed through an HTTP/SOCKS proxy (`http_proxy` / `https_proxy` env vars).
 
+**Choosing a client for trading.** For market making and other
+latency-sensitive, high-frequency strategies, use **`AsyncChainClient`**: it
+returns a ticket as soon as the node accepts the transaction (no waiting for
+a block), and a single client owns the event loop, timestamp-nonce
+allocation, pool-capacity management, and subscription recovery for you.
+`ChainClient`'s synchronous methods are the better fit for scripts,
+onboarding, and low-frequency operations where blocking until inclusion (or
+finality) is acceptable.
+
 ### Synchronous ticket workflow
 
 `ChainClient` can return a ticket as soon as the node accepts the extrinsic.
@@ -977,6 +986,10 @@ res = chain.lending.buy_quota(
 A runnable version is in [`examples/quota.py`](examples/quota.py).
 
 ## EVM bridge (Bool Network)
+
+> **Scope:** the SDK currently supports EVM↔EVM bridging between **Ethereum
+> and DeepX** only. For other chains and routes (e.g. Bitcoin, Solana), please
+> use the official bridge on our website: [deepx.fi](https://deepx.fi).
 
 The EVM bridge (`MultiTokenBridge`, a Bool Network consumer) moves tokens
 between DeepX and other EVM chains. The flow:
