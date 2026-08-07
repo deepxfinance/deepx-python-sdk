@@ -865,9 +865,11 @@ print(stats, info, delegates)
 Delegate accounts are **wallet-level** operators: a delegate set on your EOA
 can act on every subaccount the wallet owns. They take a display name and an
 expiry (wall-clock ms; past values are rejected with `19_34 DelegateExpiry`);
-re-setting the same delegate updates its name/expiry. A delegate's `mode`
-gates what it may do (`0=PlaceOrCancelOrder` default, `1=DepositOrWithdraw`,
-`2=UpdateSubaccount`, `3=Disable`):
+re-setting the same delegate updates its name/expiry. Delegates are
+order-only: mode `0=PlaceOrCancelOrder` (the default) places and cancels
+orders, `3=Disable` suspends the delegate without removing it. (Modes
+`1`/`2` — deposit/withdraw and subaccount management — are disabled
+on-chain and rejected by both the SDK and the chain.)
 
 ```python
 chain.subaccount_client.set_delegate_account(
@@ -877,7 +879,7 @@ chain.subaccount_client.set_delegate_account(
 )
 chain.subaccount_client.update_delegate_mode(
     delegate="0xDELEGATE_ADDRESS",
-    new_mode=1,  # DepositOrWithdraw; variant names also accepted
+    new_mode=3,  # Disable; variant names also accepted
 )
 chain.subaccount_client.remove_delegate_account(
     delegate="0xDELEGATE_ADDRESS",

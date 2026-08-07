@@ -1482,10 +1482,10 @@ def test_low_level_non_order_sdk_uses_pallet_calls_where_available(monkeypatch) 
             lambda: _subaccount.update_delegate_mode(
                 **subacct,
                 delegate=other,
-                new_mode=1,
+                new_mode=3,
             ),
             "update_delegate_mode",
-            {"address": other, "new_mode": "DepositOrWithdraw"},
+            {"address": other, "new_mode": "Disable"},
             True,
         ),
         (
