@@ -19,6 +19,7 @@ if "substrateinterface" not in sys.modules:
     sys.modules["substrateinterface"] = substrate_stub
 
 import deepx_sdk as dx
+from deepx_sdk._network import DEFAULT_NET, network_config
 from deepx_sdk.ws_client import (
     WsClient,
     WsMessage,
@@ -476,7 +477,7 @@ def test_api_v1_request_forwarding(
 def test_api_v1_ws_helpers() -> None:
     api = _make_api()
 
-    assert api.v1.ws.websocket_url() == "wss://ws-api-testnet.deepx.fi/v1/ws"
+    assert api.v1.ws.websocket_url() == f"{network_config(DEFAULT_NET).ws_base_url}/v1/ws"
     api.ws_base_url = "ws://127.0.0.1:8080"
     assert api.v1.ws.websocket_url() == "ws://127.0.0.1:8080/v1/ws"
     assert v1_ws_params(

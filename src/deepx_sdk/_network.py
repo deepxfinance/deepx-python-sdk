@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-DEFAULT_NET = "testnet"
+DEFAULT_NET = "devnet"
 
 
 @dataclass(frozen=True)
