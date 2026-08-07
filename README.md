@@ -1028,7 +1028,7 @@ print(result["tx_hash"])
 dst = BridgeApi(
     rpc_url="https://ethereum-sepolia-rpc.publicnode.com",
     chain_id=11155111,
-    contract_address="0x2754a25ab32a6ec2e13b2ed984f0efdf5839493b",
+    contract_address="0x70e6adc5c6c2f131b32ce8347876e6c1af4f65e8",
 )
 event = dst.wait_bridge_in(recipient="0xRECIPIENT_ON_SEPOLIA",
                            from_block=dst.latest_block() - 20)
@@ -1039,8 +1039,8 @@ Current deployments:
 
 | Chain | Chain ID | Bridge |
 | ----- | -------- | ------ |
-| DeepX | 4846 | `0x7db17a464c6ca9c1a81a25b4364d4f8e673f0049` |
-| Ethereum Sepolia | 11155111 | `0x2754a25ab32a6ec2e13b2ed984f0efdf5839493b` |
+| DeepX | 4846 | `0x874c408fd66117a2edb953fe68cadccd675e5c2c` |
+| Ethereum Sepolia | 11155111 | `0x70e6adc5c6c2f131b32ce8347876e6c1af4f65e8` |
 
 Token ids: `ETH=1, USDT=2, USDC=3, DAI=4, BNB=5, OKB=6` (`BRIDGE_TOKEN_MAP`).
 A token must be registered on **both** chains' bridges before it can be
