@@ -865,9 +865,11 @@ print(stats, info, delegates)
 Delegate accounts are **wallet-level** operators: a delegate set on your EOA
 can act on every subaccount the wallet owns. They take a display name and an
 expiry (wall-clock ms; past values are rejected with `19_34 DelegateExpiry`);
-re-setting the same delegate updates its name/expiry. A delegate's `mode`
-gates what it may do (`0=PlaceOrCancelOrder` default, `1=DepositOrWithdraw`,
-`2=UpdateSubaccount`, `3=Disable`):
+re-setting the same delegate updates its name/expiry. Delegates are
+order-only: mode `0=PlaceOrCancelOrder` (the default) places and cancels
+orders, `3=Disable` suspends the delegate without removing it. (Modes
+`1`/`2` — deposit/withdraw and subaccount management — are disabled
+on-chain and rejected by both the SDK and the chain.)
 
 ```python
 chain.subaccount_client.set_delegate_account(
@@ -877,7 +879,7 @@ chain.subaccount_client.set_delegate_account(
 )
 chain.subaccount_client.update_delegate_mode(
     delegate="0xDELEGATE_ADDRESS",
-    new_mode=1,  # DepositOrWithdraw; variant names also accepted
+    new_mode=3,  # Disable; variant names also accepted
 )
 chain.subaccount_client.remove_delegate_account(
     delegate="0xDELEGATE_ADDRESS",
@@ -1026,7 +1028,7 @@ print(result["tx_hash"])
 dst = BridgeApi(
     rpc_url="https://ethereum-sepolia-rpc.publicnode.com",
     chain_id=11155111,
-    contract_address="0x2754a25ab32a6ec2e13b2ed984f0efdf5839493b",
+    contract_address="0x70e6adc5c6c2f131b32ce8347876e6c1af4f65e8",
 )
 event = dst.wait_bridge_in(recipient="0xRECIPIENT_ON_SEPOLIA",
                            from_block=dst.latest_block() - 20)
@@ -1037,8 +1039,8 @@ Current deployments:
 
 | Chain | Chain ID | Bridge |
 | ----- | -------- | ------ |
-| DeepX | 4846 | `0x7db17a464c6ca9c1a81a25b4364d4f8e673f0049` |
-| Ethereum Sepolia | 11155111 | `0x2754a25ab32a6ec2e13b2ed984f0efdf5839493b` |
+| DeepX | 4846 | `0x874c408fd66117a2edb953fe68cadccd675e5c2c` |
+| Ethereum Sepolia | 11155111 | `0x70e6adc5c6c2f131b32ce8347876e6c1af4f65e8` |
 
 Token ids: `ETH=1, USDT=2, USDC=3, DAI=4, BNB=5, OKB=6` (`BRIDGE_TOKEN_MAP`).
 A token must be registered on **both** chains' bridges before it can be

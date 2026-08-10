@@ -15,6 +15,7 @@ if "substrateinterface" not in sys.modules:
     sys.modules["substrateinterface"] = substrate_stub
 
 import deepx_sdk as dx
+from deepx_sdk._network import DEFAULT_NET, network_config
 import deepx_sdk.api as api_mod
 import deepx_sdk.client as chain_mod
 import deepx_sdk._evm as evm_mod
@@ -235,11 +236,12 @@ def test_api_client_get_fails_over_but_post_does_not(
 
 def test_api_client_default_net_and_base_url() -> None:
     client = dx.ApiClient()
-    assert client.net == "testnet"
-    assert client.base_url == "https://rest-api-testnet.deepx.fi"
-    assert client.ws_base_url == "wss://ws-api-testnet.deepx.fi"
-    assert client.evm_rpc_url == "https://rpc-testnet.deepx.fi"
-    assert client.substrate_ws == "wss://rpc-testnet.deepx.fi"
+    expected = network_config(DEFAULT_NET)
+    assert client.net == DEFAULT_NET
+    assert client.base_url == expected.api_base_url
+    assert client.ws_base_url == expected.ws_base_url
+    assert client.evm_rpc_url == expected.evm_rpc_url
+    assert client.substrate_ws == expected.substrate_ws
     assert not hasattr(client, "internal_v1")
     assert not hasattr(client, "v2")
     assert not hasattr(client, "v3")
@@ -356,9 +358,10 @@ def test_chain_client_default_net_and_urls() -> None:
         private_key="0x" + "11" * 32,
         subaccount="0x" + "33" * 20,
     )
-    assert client.net == "testnet"
-    assert client.evm_rpc_url == "https://rpc-testnet.deepx.fi"
-    assert client.substrate_ws == "wss://rpc-testnet.deepx.fi"
+    expected = network_config(DEFAULT_NET)
+    assert client.net == DEFAULT_NET
+    assert client.evm_rpc_url == expected.evm_rpc_url
+    assert client.substrate_ws == expected.substrate_ws
     assert client.perp_precompile_address == ""
     assert client.spot_precompile_address == ""
     assert client.lending_precompile_address == ""

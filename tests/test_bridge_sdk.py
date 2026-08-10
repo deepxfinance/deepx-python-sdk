@@ -10,6 +10,7 @@ from eth_abi import encode
 import deepx_sdk as dx
 import deepx_sdk.api as api_mod
 import deepx_sdk.bridge as bridge_mod
+from deepx_sdk._network import DEFAULT_NET, network_config
 
 
 class _DummyResponse:
@@ -1139,10 +1140,11 @@ def test_bridge_latest_block(monkeypatch) -> None:
 
 def test_bridge_api_net_resolution() -> None:
     default = bridge_mod.BridgeApi()
-    assert default.net == "testnet"
-    assert default.rpc_url == "https://rpc-testnet.deepx.fi"
-    assert default.chain_id == 4846
-    assert default.contract_address == "0x7db17a464c6ca9c1a81a25b4364d4f8e673f0049"
+    expected = network_config(DEFAULT_NET)
+    assert default.net == DEFAULT_NET
+    assert default.rpc_url == expected.evm_rpc_url
+    assert default.chain_id == expected.chain_id
+    assert default.contract_address == expected.bridge_contract
 
     devnet = bridge_mod.BridgeApi(net="devnet")
     assert devnet.chain_id == 4845

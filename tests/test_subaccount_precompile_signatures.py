@@ -32,11 +32,26 @@ def test_update_delegate_mode_uses_pallet_call(monkeypatch) -> None:
         private_key="0x" + "11" * 32,
         precompile_address="0x0000000000000000000000000000000000000451",
         delegate="0x00000000000000000000000000000000000000aa",
-        new_mode=1,
+        new_mode=3,
     )
 
     assert captured["submit_kwargs"]["call_function"] == "update_delegate_mode"
     assert captured["submit_kwargs"]["call_params"] == {
         "address": "0x00000000000000000000000000000000000000aa",
-        "new_mode": "DepositOrWithdraw",
+        "new_mode": "Disable",
     }
+
+
+def test_update_delegate_mode_rejects_disabled_modes() -> None:
+    import pytest
+
+    for disabled in (1, 2, "DepositOrWithdraw", "UpdateSubaccount"):
+        with pytest.raises(ValueError, match="disabled on-chain"):
+            _subaccount.update_delegate_mode(
+                substrate_ws="ws://127.0.0.1:9944",
+                evm_rpc_url="http://127.0.0.1:8545",
+                private_key="0x" + "11" * 32,
+                precompile_address="0x0000000000000000000000000000000000000451",
+                delegate="0x00000000000000000000000000000000000000aa",
+                new_mode=disabled,
+            )

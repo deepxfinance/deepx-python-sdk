@@ -307,7 +307,7 @@ def test_chain_client_all_public_methods_dispatch_without_skip(monkeypatch) -> N
     client.subaccount_client.delete_subaccount(subaccount=SUBACCOUNT)
     client.subaccount_client.no_op()
     client.subaccount_client.set_delegate_account(delegate=OTHER, name=b"mm", valid_until=1)
-    client.subaccount_client.update_delegate_mode(delegate=OTHER, new_mode=1)
+    client.subaccount_client.update_delegate_mode(delegate=OTHER, new_mode=3)
     client.subaccount_client.remove_delegate_account(delegate=OTHER)
     client.subaccount_client.set_spot_margin(subaccount=SUBACCOUNT, enable_spot_margin=True)
     client.subaccount_client.rename_subaccount(subaccount=SUBACCOUNT, new_name=b"new")

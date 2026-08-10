@@ -50,7 +50,7 @@ DST_RPC = optional(
 )
 DST_CHAIN_ID = int(optional("BRIDGE_DST_CHAIN_ID", "11155111"))
 DST_BRIDGE = optional(
-    "BRIDGE_DST", "0x2754a25ab32a6ec2e13b2ed984f0efdf5839493b"
+    "BRIDGE_DST", "0x70e6adc5c6c2f131b32ce8347876e6c1af4f65e8"
 )
 
 PRIVATE_KEY = require("PRIVATE_KEY")

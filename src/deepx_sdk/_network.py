@@ -34,7 +34,7 @@ _NETWORKS: dict[str, NetworkConfig] = {
         substrate_ws="wss://rpc-testnet.deepx.fi",
         evm_rpc_url="https://rpc-testnet.deepx.fi",
         chain_id=4846,
-        bridge_contract="0x7db17a464c6ca9c1a81a25b4364d4f8e673f0049",
+        bridge_contract="0x874c408fd66117a2edb953fe68cadccd675e5c2c",
     ),
 }
 

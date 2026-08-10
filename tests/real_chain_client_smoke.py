@@ -392,7 +392,7 @@ def main() -> None:
     # safe to set/remove regardless of the lifecycle subaccount.
     delegate_set = record(results, "subaccount_client.set_delegate_account", lambda: client.subaccount_client.set_delegate_account(delegate=delegate, name=f"codex-{unique}".encode(), valid_until=(unique + 86_400_000), timeout_ms=60_000))
     if delegate_set is not None:
-        record(results, "subaccount_client.update_delegate_mode", lambda: client.subaccount_client.update_delegate_mode(delegate=delegate, new_mode=1, timeout_ms=60_000))
+        record(results, "subaccount_client.update_delegate_mode", lambda: client.subaccount_client.update_delegate_mode(delegate=delegate, new_mode=3, timeout_ms=60_000))
         record(results, "subaccount_client.delegate_accounts_for", lambda: client.subaccount_client.delegate_accounts_for(owner=WALLET))
         record(results, "subaccount_client.remove_delegate_account", lambda: client.subaccount_client.remove_delegate_account(delegate=delegate, timeout_ms=60_000))
     else:

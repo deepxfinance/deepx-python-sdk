@@ -156,6 +156,11 @@ _DELEGATE_MODE_VARIANTS = {
     3: "Disable",
 }
 
+# Chain runtime 194/353: modes 1 (DepositOrWithdraw) and 2 (UpdateSubaccount)
+# are disabled on-chain — setting them fails with InvalidDelegateMode and
+# existing delegates in those modes verify nothing. Only 0 and 3 are usable.
+_DISABLED_DELEGATE_MODES = frozenset({"DepositOrWithdraw", "UpdateSubaccount"})
+
 
 def update_delegate_mode(
     *,
@@ -174,16 +179,22 @@ def update_delegate_mode(
     wait_for_finalized: bool = True,
     timeout_ms: Optional[int] = None,
 ) -> TxResult:
-    # DelegateMode: 0=PlaceOrCancelOrder, 1=DepositOrWithdraw,
-    # 2=UpdateSubaccount, 3=Disable. Enabling a non-Disable mode on an
-    # expired delegate fails with 19_34 DelegateExpiry; unknown delegate
-    # fails with 19_37 DelegateAccountNotInit.
+    # DelegateMode: 0=PlaceOrCancelOrder, 3=Disable. Modes 1/2
+    # (DepositOrWithdraw / UpdateSubaccount) are disabled on-chain since
+    # runtime 194 and rejected with InvalidDelegateMode — caught locally here.
+    # Enabling a non-Disable mode on an expired delegate fails with
+    # 19_34 DelegateExpiry; unknown delegate fails with DelegateAccountNotInit.
     if isinstance(new_mode, str):
         variant = new_mode
     else:
         variant = _DELEGATE_MODE_VARIANTS.get(int(new_mode))
         if variant is None:
             raise ValueError(f"unknown delegate mode: {new_mode}")
+    if variant in _DISABLED_DELEGATE_MODES:
+        raise ValueError(
+            f"delegate mode {variant!r} is disabled on-chain; "
+            "use 0 (PlaceOrCancelOrder) or 3 (Disable)"
+        )
     return _submit_subaccount_call(
         substrate_ws=substrate_ws,
         evm_rpc_url=evm_rpc_url,

@@ -296,8 +296,8 @@ class DelegateInfo:
     delegate_name: str
     valid_until: int
     # Chain runtime 190: delegates are wallet-level and carry a mode
-    # (DelegateMode: 0=PlaceOrCancelOrder, 1=DepositOrWithdraw,
-    # 2=UpdateSubaccount, 3=Disable). Defaults keep pre-190 3-field decodes
+    # (DelegateMode: 0=PlaceOrCancelOrder, 3=Disable; 1/2 are disabled
+    # on-chain since runtime 194). Defaults keep pre-190 3-field decodes
     # working.
     mode: int = 0
     create_time: int = 0
