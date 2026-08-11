@@ -16,7 +16,7 @@ def get_perp_price_bounds(substrate_ws: str, market_id: int) -> PerpPriceBounds:
     """Fetch perp price bounds and trading constraints for a market."""
     # Use the shared factory: proxy env injection, ws timeouts, endpoint pools.
     # A bare SubstrateInterface(url=...) ignores http_proxy/https_proxy and
-    # fails outright on flaky routes (devnet direct path drops the TLS
+    # fails outright on flaky routes (the dev direct path drops the TLS
     # handshake with SSLEOFError).
     from . import _native_py
 

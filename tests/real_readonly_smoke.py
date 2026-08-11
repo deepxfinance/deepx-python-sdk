@@ -12,10 +12,10 @@ from typing import Any, Callable
 import deepx_sdk as dx
 
 
-BASE_URL = os.environ.get("DEEPX_REST_URL", "https://rest-api-devnet.deepx.fi")
-EVM_RPC_URL = os.environ.get("DEEPX_EVM_RPC_URL", "https://devnet-rpc-new.deepx.fi")
-SUBSTRATE_WS = os.environ.get("DEEPX_SUBSTRATE_WS", "wss://devnet-rpc-new.deepx.fi")
-REPORT = Path("/tmp/deepx_devnet_readonly_smoke_report.json")
+BASE_URL = os.environ.get("DEEPX_REST_URL", "https://rest-api-testnet.deepx.fi")
+EVM_RPC_URL = os.environ.get("DEEPX_EVM_RPC_URL", "https://rpc-testnet.deepx.fi")
+SUBSTRATE_WS = os.environ.get("DEEPX_SUBSTRATE_WS", "wss://rpc-testnet.deepx.fi")
+REPORT = Path("/tmp/deepx_readonly_smoke_report.json")
 
 PERP_SYMBOL = os.environ.get("DEEPX_PERP_SYMBOL", "ETH-USDC")
 SPOT_SYMBOL = os.environ.get("DEEPX_SPOT_SYMBOL", "ETH-USDC")
@@ -102,9 +102,9 @@ def record(results: list[dict[str, Any]], name: str, fn: Callable[[], Any]) -> A
 
 
 def main() -> None:
-    api = dx.ApiClient(base_url=BASE_URL, net="devnet")
+    api = dx.ApiClient(base_url=BASE_URL, net="testnet")
     chain = dx.ChainClient(
-        net="devnet",
+        net="testnet",
         api_base_url=BASE_URL,
         evm_rpc_url=EVM_RPC_URL,
         substrate_ws=SUBSTRATE_WS,
@@ -116,7 +116,7 @@ def main() -> None:
 
     record(results, "api.v1.ping", lambda: api.v1.ping())
     record(results, "api.v1.time", lambda: api.v1.time())
-    record(results, "async_api.v1.ping", lambda: asyncio.run(dx.AsyncApiClient(base_url=BASE_URL, net="devnet").v1.ping()))
+    record(results, "async_api.v1.ping", lambda: asyncio.run(dx.AsyncApiClient(base_url=BASE_URL, net="testnet").v1.ping()))
     record(results, "api.v1.perp.markets", lambda: api.v1.perp.markets())
     record(results, "api.v1.spot.markets", lambda: api.v1.spot.markets())
     record(results, "api.v1.lending.markets", lambda: api.v1.lending.markets())

@@ -16,7 +16,7 @@ export PYTHONPATH=$PWD/src
 
 Notes:
 - The SDK is pure Python; these tests do not require any native build step.
-- For `ApiClient` tests, if `API_BASE_URL` is not set, the default is `https://rest-api-devnet.deepx.fi`.
+- For `ApiClient` tests, if `API_BASE_URL` is not set, the default is the production REST endpoint.
 - Test output controls for script-style tests:
   - `SDK_TEST_VERBOSE=1`: print full response payload
   - `SDK_TEST_FAIL_ONLY=1`: print only failed items
@@ -34,7 +34,7 @@ Optional:
 Remote smoke tests are kept as script-style checks:
 
 ```bash
-python tests/real_devnet_readonly_smoke.py
+python tests/real_readonly_smoke.py
 python tests/real_api_v1_smoke.py
 python tests/real_chain_client_smoke.py
 ```
@@ -106,7 +106,7 @@ pytest -q tests/test_decode_abi_compat.py tests/test_native_py_signer.py tests/t
 pytest -q tests/test_api_client_headers.py tests/test_api_v1_sdk_methods.py
 
 # 2.5) Optionally run remote API/WS smoke checks
-python tests/real_devnet_readonly_smoke.py
+python tests/real_readonly_smoke.py
 python tests/real_api_v1_smoke.py
 python tests/real_chain_client_smoke.py
 

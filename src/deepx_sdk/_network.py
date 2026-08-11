@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from collections.abc import Sequence
 from dataclasses import dataclass
 
@@ -17,48 +18,60 @@ class NetworkConfig:
     bridge_contract: str
 
 
-_NETWORKS: dict[str, NetworkConfig] = {
-    "devnet": NetworkConfig(
-        net="devnet",
-        api_base_url="https://rest-api-devnet.deepx.fi",
-        ws_base_url="wss://ws-api-devnet.deepx.fi",
-        substrate_ws="wss://devnet-rpc-new.deepx.fi",
-        evm_rpc_url="https://devnet-rpc-new.deepx.fi",
-        chain_id=4845,
-        bridge_contract="0xa32408eD9f1dFa1e2dc30143F9133Af31E8514ed",
-    ),
-    "testnet": NetworkConfig(
-        net="testnet",
-        api_base_url="https://rest-api-testnet.deepx.fi",
-        ws_base_url="wss://ws-api-testnet.deepx.fi",
-        substrate_ws="wss://rpc-testnet.deepx.fi",
-        evm_rpc_url="https://rpc-testnet.deepx.fi",
-        chain_id=4846,
-        bridge_contract="0x874c408fd66117a2edb953fe68cadccd675e5c2c",
-    ),
-}
+# mainnet is not live yet; its endpoints read from env until the deployment is
+# finalized, so the registry can carry the entry without committing dead URLs.
+def _mainnet_config() -> NetworkConfig:
+    return NetworkConfig(
+        net="mainnet",
+        api_base_url=os.environ.get("DEEPX_MAINNET_API_BASE_URL", ""),
+        ws_base_url=os.environ.get("DEEPX_MAINNET_WS_BASE_URL", ""),
+        substrate_ws=os.environ.get("DEEPX_MAINNET_SUBSTRATE_WS", ""),
+        evm_rpc_url=os.environ.get("DEEPX_MAINNET_EVM_RPC_URL", ""),
+        chain_id=int(os.environ.get("DEEPX_MAINNET_CHAIN_ID", "0")),
+        bridge_contract=os.environ.get("DEEPX_MAINNET_BRIDGE_CONTRACT", ""),
+    )
+
+
+def _build_networks() -> dict[str, NetworkConfig]:
+    return {
+        "testnet": NetworkConfig(
+            net="testnet",
+            api_base_url="https://rest-api-testnet.deepx.fi",
+            ws_base_url="wss://ws-api-testnet.deepx.fi",
+            substrate_ws="wss://rpc-testnet.deepx.fi",
+            evm_rpc_url="https://rpc-testnet.deepx.fi",
+            chain_id=4846,
+            bridge_contract="0x874c408fd66117a2edb953fe68cadccd675e5c2c",
+        ),
+        "mainnet": _mainnet_config(),
+    }
 
 
 def normalize_net(net: str) -> str:
     resolved = str(net).strip().lower()
-    if resolved not in _NETWORKS:
+    if resolved not in _build_networks():
         raise ValueError(f"net must be one of: {allowed_nets()}")
     return resolved
 
 
-def resolve_net(net: str | None = None) -> str:
-    """Blank/None resolves to the default network; `net` is an escape hatch
-    for SDK development, not part of the user-facing surface."""
-    candidate = "" if net is None else str(net).strip()
-    return normalize_net(candidate or DEFAULT_NET)
-
-
 def allowed_nets() -> str:
-    return ", ".join(sorted(_NETWORKS))
+    return ", ".join(sorted(_build_networks()))
 
 
 def network_config(net: str) -> NetworkConfig:
-    return _NETWORKS[normalize_net(net)]
+    config = _build_networks()[normalize_net(net)]
+    if not config.evm_rpc_url:
+        raise ValueError(
+            f"network {config.net!r} is not deployed yet "
+            "(no endpoints configured)"
+        )
+    return config
+
+
+def resolve_net(net: str | None = None) -> str:
+    """Blank/None resolves to the default network."""
+    candidate = "" if net is None else str(net).strip()
+    return normalize_net(candidate or DEFAULT_NET)
 
 
 def resolve_substrate_ws_endpoints(

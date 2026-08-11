@@ -430,7 +430,7 @@ def test_perp_spot_lending_and_subaccount_edge_paths(monkeypatch: pytest.MonkeyP
         b"ETH",
         -18,
         1,
-        b"devnet",
+        b"testnet",
         10,
         -1,
         20,

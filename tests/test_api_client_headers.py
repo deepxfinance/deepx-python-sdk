@@ -59,7 +59,7 @@ def test_api_client_uses_non_urllib_default_user_agent(monkeypatch) -> None:
 
     monkeypatch.setattr(api_mod.urllib.request, "urlopen", fake_urlopen)
 
-    client = dx.ApiClient(base_url="https://rest-api-devnet.deepx.fi", timeout=12)
+    client = dx.ApiClient(base_url="https://rest-api-testnet.deepx.fi", timeout=12)
     res = client.request("GET", "/health")
 
     assert res == {"ok": True}
@@ -81,12 +81,12 @@ def test_async_api_client_uses_v1_methods(monkeypatch) -> None:
     monkeypatch.setattr(api_mod.urllib.request, "urlopen", fake_urlopen)
 
     async def run() -> object:
-        client = dx.AsyncApiClient(base_url="https://rest-api-devnet.deepx.fi", timeout=9)
+        client = dx.AsyncApiClient(base_url="https://rest-api-testnet.deepx.fi", timeout=9)
         return await client.v1.ping()
 
     assert asyncio.run(run()) == {"ok": True}
     assert captured["timeout"] == 9
-    assert captured["req"].full_url == "https://rest-api-devnet.deepx.fi/v1/ping"
+    assert captured["req"].full_url == "https://rest-api-testnet.deepx.fi/v1/ping"
 
 
 def test_api_client_allows_user_agent_override(monkeypatch) -> None:
@@ -98,7 +98,7 @@ def test_api_client_allows_user_agent_override(monkeypatch) -> None:
 
     monkeypatch.setattr(api_mod.urllib.request, "urlopen", fake_urlopen)
 
-    client = dx.ApiClient(base_url="https://rest-api-devnet.deepx.fi")
+    client = dx.ApiClient(base_url="https://rest-api-testnet.deepx.fi")
     _ = client.request(
         "GET",
         "/health",
@@ -124,7 +124,7 @@ def test_api_client_http_error_raises_rest_error(monkeypatch) -> None:
 
     monkeypatch.setattr(api_mod.urllib.request, "urlopen", fake_urlopen)
 
-    client = dx.ApiClient(base_url="https://rest-api-devnet.deepx.fi")
+    client = dx.ApiClient(base_url="https://rest-api-testnet.deepx.fi")
     with pytest.raises(dx.RESTError) as exc_info:
         client.request("GET", "/v1/perp/markets/NOPE-USDC")
 
@@ -150,7 +150,7 @@ def test_api_client_http_error_registered_code_raises_api_error(monkeypatch) -> 
 
     monkeypatch.setattr(api_mod.urllib.request, "urlopen", fake_urlopen)
 
-    client = dx.ApiClient(base_url="https://rest-api-devnet.deepx.fi")
+    client = dx.ApiClient(base_url="https://rest-api-testnet.deepx.fi")
     with pytest.raises(dx.APIError) as exc_info:
         client.request("GET", "/v1/account/subaccounts/0xX/perp/orders/999")
 
@@ -174,7 +174,7 @@ def test_api_client_http_error_with_plain_body_raises_rest_error(monkeypatch) ->
 
     monkeypatch.setattr(api_mod.urllib.request, "urlopen", fake_urlopen)
 
-    client = dx.ApiClient(base_url="https://rest-api-devnet.deepx.fi")
+    client = dx.ApiClient(base_url="https://rest-api-testnet.deepx.fi")
     with pytest.raises(dx.RESTError) as exc_info:
         client.request("GET", "/v1/perp/markets")
 
@@ -191,7 +191,7 @@ def test_api_client_transport_error_raises_rpc_error(monkeypatch) -> None:
 
     monkeypatch.setattr(api_mod.urllib.request, "urlopen", fake_urlopen)
 
-    client = dx.ApiClient(base_url="https://rest-api-devnet.deepx.fi")
+    client = dx.ApiClient(base_url="https://rest-api-testnet.deepx.fi")
     with pytest.raises(dx.RPCError, match="REST request failed"):
         client.request("GET", "/v1/perp/markets")
 
@@ -247,32 +247,18 @@ def test_api_client_default_net_and_base_url() -> None:
     assert not hasattr(client, "v3")
 
 
-@pytest.mark.parametrize(
-    ("net", "expected_base_url"),
-    [
-        ("devnet", "https://rest-api-devnet.deepx.fi"),
-        ("testnet", "https://rest-api-testnet.deepx.fi"),
-    ],
-)
-def test_api_client_base_url_resolved_by_net(net: str, expected_base_url: str) -> None:
+@pytest.mark.parametrize("net", ["testnet"])
+def test_api_client_base_url_resolved_by_net(net: str) -> None:
     client = dx.ApiClient(net=net)
     assert client.net == net
-    assert client.base_url == expected_base_url
+    assert client.base_url == network_config(net).api_base_url
 
 
-@pytest.mark.parametrize(
-    ("net", "expected_ws_base_url"),
-    [
-        ("devnet", "wss://ws-api-devnet.deepx.fi"),
-        ("testnet", "wss://ws-api-testnet.deepx.fi"),
-    ],
-)
-def test_api_client_ws_base_url_resolved_by_net(
-    net: str, expected_ws_base_url: str
-) -> None:
+@pytest.mark.parametrize("net", ["testnet"])
+def test_api_client_ws_base_url_resolved_by_net(net: str) -> None:
     client = dx.ApiClient(net=net)
     assert client.net == net
-    assert client.ws_base_url == expected_ws_base_url
+    assert client.ws_base_url == network_config(net).ws_base_url
 
 
 def test_api_client_custom_base_url_overrides_net_mapping() -> None:
@@ -349,7 +335,7 @@ def test_api_client_invalid_net_raises() -> None:
 
 
 def test_api_client_mainnet_raises_until_deployed() -> None:
-    with pytest.raises(ValueError, match="net must be one of"):
+    with pytest.raises(ValueError, match="not deployed yet"):
         _ = dx.ApiClient(net="mainnet")
 
 
@@ -369,24 +355,16 @@ def test_chain_client_default_net_and_urls() -> None:
     assert client.system_precompile_address == ""
 
 
-@pytest.mark.parametrize(
-    ("net", "expected_evm_rpc_url", "expected_substrate_ws"),
-    [
-        ("devnet", "https://devnet-rpc-new.deepx.fi", "wss://devnet-rpc-new.deepx.fi"),
-        ("testnet", "https://rpc-testnet.deepx.fi", "wss://rpc-testnet.deepx.fi"),
-    ],
-)
-def test_chain_client_urls_resolved_by_net(
-    net: str, expected_evm_rpc_url: str, expected_substrate_ws: str
-) -> None:
+@pytest.mark.parametrize("net", ["testnet"])
+def test_chain_client_urls_resolved_by_net(net: str) -> None:
     client = dx.ChainClient(
         net=net,
         private_key="0x" + "11" * 32,
         subaccount="0x" + "33" * 20,
     )
     assert client.net == net
-    assert client.evm_rpc_url == expected_evm_rpc_url
-    assert client.substrate_ws == expected_substrate_ws
+    assert client.evm_rpc_url == network_config(net).evm_rpc_url
+    assert client.substrate_ws == network_config(net).substrate_ws
 
 
 def test_chain_client_custom_urls_override_net_mapping() -> None:
@@ -460,8 +438,8 @@ def test_chain_client_custom_evm_rpc_transport_is_scoped_to_evm_calls(monkeypatc
     )
 
     client = dx.ChainClient(
-        evm_rpc_url="https://devnet-rpc-new.deepx.fi",
-        substrate_ws="wss://devnet-rpc-new.deepx.fi",
+        evm_rpc_url="https://rpc-testnet.deepx.fi",
+        substrate_ws="wss://rpc-testnet.deepx.fi",
         private_key="0x" + "11" * 32,
         subaccount="0x" + "33" * 20,
         evm_rpc_user_agent="DeepXCustomUA/1.0",
@@ -616,7 +594,7 @@ def test_chain_client_invalid_net_raises() -> None:
 
 
 def test_chain_client_mainnet_raises_until_deployed() -> None:
-    with pytest.raises(ValueError, match="net must be one of"):
+    with pytest.raises(ValueError, match="not deployed yet"):
         _ = dx.ChainClient(
             net="mainnet",
             private_key="0x" + "11" * 32,

@@ -8,10 +8,9 @@ print = make_print()  # type: ignore[assignment]
 # Transaction test for lending actions via client.lending.*
 # Set LENDING_ACTION to choose the call.
 # Example:
-#   export CHAIN_NET=devnet   # devnet | testnet
-#   # Optional overrides:
-#   # export SUBSTRATE_WS=wss://devnet-rpc-new.deepx.fi
-#   # export EVM_RPC_URL=https://devnet-rpc-new.deepx.fi
+#   # Optional overrides (point at the internal deployment when developing):
+#   # export SUBSTRATE_WS=wss://rpc-testnet.deepx.fi
+#   # export EVM_RPC_URL=https://rpc-testnet.deepx.fi
 #   export PRIVATE_KEY=0x...
 #   export LENDING_PRECOMPILE=0x0000000000000000000000000000000000000450
 #   export LENDING_ACTION=deposit
@@ -68,7 +67,6 @@ def print_tx(res: object) -> None:
 
 
 def main() -> None:
-    net = os.environ.get("CHAIN_NET", "devnet").strip() or "devnet"
     substrate_ws = os.environ.get("SUBSTRATE_WS", "").strip()
     evm_rpc_url = os.environ.get("EVM_RPC_URL", "").strip()
     private_key = require_env("PRIVATE_KEY")
@@ -101,7 +99,6 @@ def main() -> None:
         default_subaccount = "0x" + "00" * 20
 
     client = dx.ChainClient(
-        net=net,
         substrate_ws=substrate_ws,
         evm_rpc_url=evm_rpc_url,
         private_key=private_key,
