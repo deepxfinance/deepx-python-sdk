@@ -98,9 +98,24 @@ def _patch_request(monkeypatch: pytest.MonkeyPatch, api: dx.ApiClient) -> dict[s
             None,
         ),
         (
-            lambda api: api.v1.account.wallet_one_click_trading_accounts(address="0xabc"),
-            "/v1/account/wallets/0xabc/one-click-trading-accounts",
+            lambda api: api.v1.account.wallet_delegate_accounts(address="0xabc"),
+            "/v1/account/wallets/0xabc/delegate-accounts",
             None,
+        ),
+        (
+            lambda api: api.v1.account.delegator_accounts(address="0xabc"),
+            "/v1/account/delegates/0xabc/delegator-accounts",
+            None,
+        ),
+        (
+            lambda api: api.v1.account.internal_delegate_accounts(address="0xabc"),
+            "/internal/v1/account/delegate-accounts",
+            {"address": "0xabc"},
+        ),
+        (
+            lambda api: api.v1.account.internal_delegator_accounts(address="0xabc"),
+            "/internal/v1/account/delegator-accounts",
+            {"address": "0xabc"},
         ),
         (
             lambda api: api.v1.account.subaccount_info(address="0xsub"),
@@ -1585,7 +1600,7 @@ def test_api_v1_account_claim_quota_signs_exact_message(monkeypatch: pytest.Monk
     api.v1.account.claim_quota(idempotency_key="018f52bc-0f0b-7cc4-b356-a91f62c72e3f")
     body = captured["json_body"]
     assert captured["method"] == "POST"
-    assert captured["path"] == "/v1/account/quota/claim"
+    assert captured["path"] == f"/v1/account/wallets/{expected_wallet}/quota/claims"
     assert body["wallet"] == expected_wallet
     assert body["idempotencyKey"] == "018f52bc-0f0b-7cc4-b356-a91f62c72e3f"
     assert body["message"] == (

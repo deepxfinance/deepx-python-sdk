@@ -1,17 +1,12 @@
 # deepx-python-sdk (Python)
 
-Python SDK that encodes ABI calls in Python and signs/submits transactions via
-Substrate `ethereum.transact` using a pure-Python implementation.
+Python SDK that encodes ABI calls in Python and signs/submits transactions via Substrate `ethereum.transact` using a pure-Python implementation.
 
 Clients:
 
-- `AsyncChainClient` — the recommended client for trading: async transaction
-  tickets, self-healing subscriptions, and pool management. Use it for market
-  making and anything latency-sensitive.
-- `ChainClient` — synchronous on-chain client for scripts, onboarding, and
-  low-frequency operations.
-- `ApiClient` — REST client for market data and the operations the chain
-  clients don't cover.
+- `AsyncChainClient` — the recommended client for trading: async transaction tickets, self-healing subscriptions, and pool management. Use it for market making and anything latency-sensitive.
+- `ChainClient` — synchronous on-chain client for scripts, onboarding, and low-frequency operations.
+- `ApiClient` — REST client for market data and the operations the chain clients don't cover.
 - `SDK` as a thin wrapper holding both clients.
 
 ## Install
@@ -36,23 +31,18 @@ uv sync --all-extras
 
 DeepX uses a **two-tier account model**:
 
-| Tier             | Lives in              | What it does                                   |
-| ---------------- | --------------------- | ---------------------------------------------- |
-| **EOA** (wallet) | Off-chain (your side) | Holds gas / native token, signs transactions   |
-| **Subaccount**   | On-chain              | Trading identity — positions, orders, balances |
+| Tier             | Lives in              | What it does                                             |
+| ---------------- | --------------------- | -------------------------------------------------------- |
+| **EOA** (wallet) | Off-chain (your keys) | Holds token balances; signs transactions                 |
+| **Subaccount**   | On-chain              | Trading identity — positions, orders, balances           |
 
-A single EOA can own multiple subaccounts; the SDK signs transactions with
-your EOA private key but performs every trading operation against a
-specific subaccount.
+A single EOA can own multiple subaccounts; the SDK signs transactions with your EOA private key but performs every trading operation against a specific subaccount.
 
 ### First-time setup
 
-1. **Get a private key.** The SDK never generates wallets. Bring your own from
-   MetaMask, a hardware wallet, or `web3py`/`eth-account`. Fund it with gas
-   (use the network faucet).
+1. **Get a private key.** The SDK never generates wallets. Bring your own private key.
 
-2. **Create a subaccount.** This is the first on-chain step and the only
-   "account creation" the SDK performs:
+2. **Create a subaccount.**
 
     ```python
     import deepx_sdk as dx
@@ -64,7 +54,7 @@ specific subaccount.
     new_subaccount = res.event["subaccount"]  # read from the NewUserRecord event
     ```
 
-3. **Rebuild the client with the subaccount.** Every other method requires it:
+3. **Rebuild the client with the subaccount.** Every trading method requires it (wallet-level calls — `no_op`, delegate management, quota views, `buy_quota` — work without one):
 
     ```python
     chain = dx.ChainClient(
@@ -79,8 +69,7 @@ specific subaccount.
     chain.lending.deposit(subaccount=new_subaccount, asset="USDC", amount=1_000_000)
     ```
 
-5. **Trade.** Now perp/spot/lending operations work normally — see
-   [Quick start](#quick-start) below.
+5. **Trade.** Now perp/spot/lending operations work normally — see [Quick start](#quick-start) below.
 
 A runnable version of this flow is in [`examples/onboarding.py`](examples/onboarding.py).
 
@@ -107,19 +96,11 @@ api = dx.ApiClient()
 sdk = dx.SDK(chain=chain, api=api)
 ```
 
-> **First time?** The SDK does not create wallets. See [Onboarding](#onboarding) below for the
-> full first-time setup (private key → subaccount → deposit → trade).
+> **First time?** The SDK does not create wallets. See [Onboarding](#onboarding) below for the full first-time setup (private key → subaccount → deposit → trade).
 
-Both clients connect to the DeepX network by default — endpoints are
-auto-resolved, nothing else to configure. Precompile addresses likewise have
-built-in defaults (see [Precompile defaults](#precompile-defaults)); you only
-pass them when targeting a custom deployment. Custom RPC endpoints (e.g. a
-self-hosted node or proxy) can be supplied via `evm_rpc_url` / `substrate_ws`
-or the ordered `*_endpoints` failover lists below.
+Both clients connect to the DeepX network by default — endpoints are auto-resolved, nothing else to configure. Precompile addresses likewise have built-in defaults (see [Precompile defaults](#precompile-defaults)); you only pass them when targeting a custom deployment. Custom RPC endpoints (e.g. a self-hosted node or proxy) can be supplied via `evm_rpc_url` / `substrate_ws` or the ordered `*_endpoints` failover lists below.
 
-For ordered Substrate WebSocket failover, provide
-`substrate_ws_endpoints`. The first endpoint is the primary; initial connection
-failures and later disconnects rotate to the next endpoint:
+For ordered Substrate WebSocket failover, provide `substrate_ws_endpoints`. The first endpoint is the primary; initial connection failures and later disconnects rotate to the next endpoint:
 
 ```python
 client = dx.AsyncChainClient(
@@ -136,32 +117,13 @@ await client.connect()
 print(client.active_rpc_endpoint)
 ```
 
-After reconnecting, the client restores subscriptions, scans missed blocks,
-and reconciles tracked transactions. A request whose bytes may already have
-been sent is not blindly resubmitted. All configured endpoints must serve the
-same chain. Endpoint order is preserved and duplicates are removed.
+After reconnecting, the client restores subscriptions, scans missed blocks, and reconciles tracked transactions. A request whose bytes may already have been sent is not blindly resubmitted. All configured endpoints must serve the same chain. Endpoint order is preserved and duplicates are removed.
 
-`ChainClient` accepts the same `substrate_ws_endpoints` option for both its
-transaction-ticket runtime and synchronous one-shot Substrate methods. A
-synchronous submission may switch endpoints only while establishing the
-connection. Once extrinsic submission starts, the SDK does not replay the
-transaction on another endpoint because the first result may be ambiguous.
+`ChainClient` accepts the same `substrate_ws_endpoints` option for both its transaction-ticket runtime and synchronous one-shot Substrate methods. A synchronous submission may switch endpoints only while establishing the connection. Once extrinsic submission starts, the SDK does not replay the transaction on another endpoint because the first result may be ambiguous.
 
-**Self-healing while connected.** Reconnect recovery is not the only safety
-net. A watchdog (default every 5s) also covers failures that do not involve a
-disconnect: if the chain keeps producing blocks but no head notification
-arrives for ~15s — the heads subscription was dropped by a queue overflow or
-evicted server-side during a chain stall — the client re-subscribes and
-catches up via RPC. And any transaction still unresolved 60s after
-submission, despite full block visibility (typically a timestamp-nonce tx
-the node silently dropped), is moved to `ACTION_REQUIRED`, which releases
-its pool slot and tells you to reconcile by `tx_hash` / `cloid`. Note the
-two horizons deliberately differ: a wait timeout (`executed()` /
-`finalized()`) never mutates the ticket, only the much longer stale horizon
-does — so slow-but-successful inclusions are not falsely flagged.
+**Self-healing while connected.** Reconnect recovery is not the only safety net. A watchdog (default every 5s) also covers failures that do not involve a disconnect: if the chain keeps producing blocks but no head notification arrives for ~15s — the heads subscription was dropped by a queue overflow or evicted server-side during a chain stall — the client re-subscribes and catches up via RPC. And any transaction still unresolved 60s after submission, despite full block visibility (typically a timestamp-nonce tx the node silently dropped), is moved to `ACTION_REQUIRED`, which releases its pool slot and tells you to reconcile by `tx_hash` / `cloid`. Note the two horizons deliberately differ: a wait timeout (`executed()` / `finalized()`) never mutates the ticket, only the much longer stale horizon does — so slow-but-successful inclusions are not falsely flagged.
 
-EVM JSON-RPC reads and transaction-preparation calls support an ordered HTTP
-endpoint list:
+EVM JSON-RPC reads and transaction-preparation calls support an ordered HTTP endpoint list:
 
 ```python
 chain = dx.ChainClient(
@@ -176,9 +138,7 @@ chain = dx.ChainClient(
 print(chain.active_evm_rpc_endpoint)
 ```
 
-Transport failures and HTTP 5xx responses rotate to the next endpoint for
-`eth_call`, chain-id, account-nonce, and gas-estimation requests. JSON-RPC
-business errors are returned without retrying another node.
+Transport failures and HTTP 5xx responses rotate to the next endpoint for `eth_call`, chain-id, account-nonce, and gas-estimation requests. JSON-RPC business errors are returned without retrying another node.
 
 REST API reads use `base_urls`:
 
@@ -193,33 +153,19 @@ api = dx.ApiClient(
 print(api.active_api_endpoint)
 ```
 
-`GET`, `HEAD`, and `OPTIONS` requests fail over on transport failures and HTTP
-5xx responses. Mutating REST requests are sent only to the active endpoint and
-are never automatically replayed after an ambiguous transport failure. HTTP
-429 and application-level 4xx responses also remain visible to the caller.
+`GET`, `HEAD`, and `OPTIONS` requests fail over on transport failures and HTTP 5xx responses. Mutating REST requests are sent only to the active endpoint and are never automatically replayed after an ambiguous transport failure. HTTP 429 and application-level 4xx responses also remain visible to the caller.
 
-`ApiClient` likewise auto-resolves `base_url` / `ws_base_url` for the default
-network; you can override with a custom `base_url` or `ws_base_url` when needed.
+`ApiClient` likewise auto-resolves `base_url` / `ws_base_url` for the default network; you can override with a custom `base_url` or `ws_base_url` when needed.
 
 ## Transaction ticket lifecycle
 
-Transaction tickets work out of the box, including WebSocket connections
-routed through an HTTP/SOCKS proxy (`http_proxy` / `https_proxy` env vars).
+Transaction tickets work out of the box, including WebSocket connections routed through an HTTP/SOCKS proxy (`http_proxy` / `https_proxy` env vars).
 
-**Choosing a client for trading.** For market making and other
-latency-sensitive, high-frequency strategies, use **`AsyncChainClient`**: it
-returns a ticket as soon as the node accepts the transaction (no waiting for
-a block), and a single client owns the event loop, timestamp-nonce
-allocation, pool-capacity management, and subscription recovery for you.
-`ChainClient`'s synchronous methods are the better fit for scripts,
-onboarding, and low-frequency operations where blocking until inclusion (or
-finality) is acceptable.
+**Choosing a client for trading.** For market making and other latency-sensitive, high-frequency strategies, use **`AsyncChainClient`**: it returns a ticket as soon as the node accepts the transaction (no waiting for a block), and a single client owns the event loop, timestamp-nonce allocation, pool-capacity management, and subscription recovery for you. `ChainClient`'s synchronous methods are the better fit for scripts, onboarding, and low-frequency operations where blocking until inclusion (or finality) is acceptable.
 
 ### Synchronous ticket workflow
 
-`ChainClient` can return a ticket as soon as the node accepts the extrinsic.
-The SDK owns one background asyncio loop per client, so synchronous callers do
-not need to manage an event loop, listener, or tracker:
+`ChainClient` can return a ticket as soon as the node accepts the extrinsic. The SDK owns one background asyncio loop per client, so synchronous callers do not need to manage an event loop, listener, or tracker:
 
 ```python
 with dx.ChainClient(
@@ -235,28 +181,15 @@ with dx.ChainClient(
     ticket.finalized()          # optional: wait for chain finality
 ```
 
-The four synchronous hot-path methods are
-`perp_market.submit_order(...)`, `perp_market.submit_cancel(...)`,
-`spot_market.submit_order(...)`, and `spot_market.submit_cancel(...)`.
-They share one connection and one background event-loop thread owned by the
-`ChainClient`; they do not create a thread for every order. Existing
-`place_order(...)` and `cancel_order(...)` behavior is unchanged.
+The four synchronous hot-path methods are `perp_market.submit_order(...)`, `perp_market.submit_cancel(...)`, `spot_market.submit_order(...)`, and `spot_market.submit_cancel(...)`. They share one connection and one background event-loop thread owned by the `ChainClient`; they do not create a thread for every order. Existing `place_order(...)` and `cancel_order(...)` behavior is unchanged.
 
-Use `ChainClient` as a context manager, or call `client.close()` when the
-process no longer needs transaction tickets. Runnable example:
-[`examples/sync_orders.py`](examples/sync_orders.py).
+Use `ChainClient` as a context manager, or call `client.close()` when the process no longer needs transaction tickets. Runnable example: [`examples/sync_orders.py`](examples/sync_orders.py).
 
-`ticket.executed(timeout=...)` and `ticket.finalized(timeout=...)` raise the
-same structured `TransactionError` subclasses as the async API. The exception
-contains the failed stage, outcome certainty, retryability, transaction
-identifiers, and `suggested_action`. A wait timeout does not mutate the ticket,
-so the caller can inspect `ticket.state` / `ticket.snapshot()` and continue
-tracking it.
+`ticket.executed(timeout=...)` and `ticket.finalized(timeout=...)` raise the same structured `TransactionError` subclasses as the async API. The exception contains the failed stage, outcome certainty, retryability, transaction identifiers, and `suggested_action`. A wait timeout does not mutate the ticket, so the caller can inspect `ticket.state` / `ticket.snapshot()` and continue tracking it.
 
 ### Asynchronous ticket workflow
 
-The normal market-maker path is a transaction ticket. `place_order()` returns
-as soon as the node accepts the extrinsic; it does not wait for a block:
+The normal market-maker path is a transaction ticket. `place_order()` returns as soon as the node accepts the extrinsic; it does not wait for a block:
 
 ```python
 ticket = await client.perp_market.place_order(...)
@@ -266,23 +199,13 @@ result = await ticket.executed()
 await ticket.finalized()
 ```
 
-The ticket is a `PendingTransaction`, so existing code remains compatible.
-`state` is the concise business state; `status` preserves the exact underlying
-transaction status. `executed()` returns the typed business result, while
-`finalized()` waits for chain finality.
+The ticket is a `PendingTransaction`, so existing code remains compatible. `state` is the concise business state; `status` preserves the exact underlying transaction status. `executed()` returns the typed business result, while `finalized()` waits for chain finality.
 
-The current chain runtime targets a 70 ms block slot. `place_order()` and
-`cancel_order()` do not wait for that slot: they return the ticket when the
-node reports that the transaction is accepted into its pool. `executed()`
-waits for successful execution in a block, so its latency includes pool wait,
-the remaining part of the current or next 70 ms slot, block processing, and
-network delivery. The 70 ms value is a scheduling target, not an SDK latency
-guarantee.
+The current chain runtime targets a 70 ms block slot. `place_order()` and `cancel_order()` do not wait for that slot: they return the ticket when the node reports that the transaction is accepted into its pool. `executed()` waits for successful execution in a block, so its latency includes pool wait, the remaining part of the current or next 70 ms slot, block processing, and network delivery. The 70 ms value is a scheduling target, not an SDK latency guarantee.
 
 Runnable example: [`examples/async_orders.py`](examples/async_orders.py).
 
-If the caller only needs the typed result after execution, use the one-line
-wait helpers:
+If the caller only needs the typed result after execution, use the one-line wait helpers:
 
 ```python
 result = await client.perp_market.place_order_and_wait(
@@ -294,20 +217,11 @@ result = await client.perp_market.place_order_and_wait(
 )
 ```
 
-The four helpers are
-`perp_market.place_order_and_wait(...)`,
-`perp_market.cancel_order_and_wait(...)`,
-`spot_market.place_order_and_wait(...)`, and
-`spot_market.cancel_order_and_wait(...)`. They wait for `EXECUTED`, not
-`FINALIZED`; use the regular ticket plus `ticket.finalized()` when finality is
-required.
+The four helpers are `perp_market.place_order_and_wait(...)`, `perp_market.cancel_order_and_wait(...)`, `spot_market.place_order_and_wait(...)`, and `spot_market.cancel_order_and_wait(...)`. They wait for `EXECUTED`, not `FINALIZED`; use the regular ticket plus `ticket.finalized()` when finality is required.
 
 ### Advanced monitoring and operations (optional)
 
-For centralized monitoring, `AsyncChainClient` also owns a process-local
-`TransactionManager`. A market maker can register one listener for every perp
-and spot transaction instead of writing an `updates()` loop for every order.
-Normal order submission does not require this API.
+For centralized monitoring, `AsyncChainClient` also owns a process-local `TransactionManager`. A market maker can register one listener for every perp and spot transaction instead of writing an `updates()` loop for every order. Normal order submission does not require this API.
 
 ```python
 import asyncio
@@ -357,11 +271,9 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-Full monitoring example:
-[`examples/async_order_monitoring.py`](examples/async_order_monitoring.py).
+Full monitoring example: [`examples/async_order_monitoring.py`](examples/async_order_monitoring.py).
 
-The manager exposes both business state and the exact Substrate-oriented raw
-status:
+The manager exposes both business state and the exact Substrate-oriented raw status:
 
 | Business state    | Product meaning                                                                                       |
 | ----------------- | ----------------------------------------------------------------------------------------------------- |
@@ -372,31 +284,13 @@ status:
 | `FAILED`          | The transaction definitively failed; inspect the structured error, failed stage, and suggested action |
 | `ACTION_REQUIRED` | The outcome is uncertain; reconcile it using `tx_hash` / `cloid`                                      |
 
-`ticket.snapshot()` returns the current immutable business view, while
-`client.transactions.snapshots()` returns the latest view of all transactions
-tracked by this client. Lookup is also available through
-`client.transactions.get(tx_hash)` and
-`client.transactions.get_by_cloid(cloid)`.
+`ticket.snapshot()` returns the current immutable business view, while `client.transactions.snapshots()` returns the latest view of all transactions tracked by this client. Lookup is also available through `client.transactions.get(tx_hash)` and `client.transactions.get_by_cloid(cloid)`.
 
-`SubmissionTimeout`, `InclusionTimeout`, and `FinalizationTimeout` identify the
-failed wait stage. A timeout does not prove that the transaction failed: when
-certainty is `UNKNOWN`, or the handle reaches `ACTION_REQUIRED`, reconcile the
-node/API state using `tx_hash` or `cloid` before retrying. Only treat
-`ticket.safe_to_retry` as permission to retry; never blindly resubmit an
-unknown outcome.
+`SubmissionTimeout`, `InclusionTimeout`, and `FinalizationTimeout` identify the failed wait stage. A timeout does not prove that the transaction failed: when certainty is `UNKNOWN`, or the handle reaches `ACTION_REQUIRED`, reconcile the node/API state using `tx_hash` or `cloid` before retrying. Only treat `ticket.safe_to_retry` as permission to retry; never blindly resubmit an unknown outcome.
 
-`print_state` defaults to `False`. When enabled, the manager's background worker
-prints one structured, redacted JSON object per state transition, so printing
-does not run on the submission callback hot path. It is convenient for local
-debugging and operations, but it is not a persistent audit log. The manager,
-its indexes, and its snapshots exist only in the current process; a
-multi-process or restart-safe strategy must persist/reconcile its own order
-identity and outcome data.
+`print_state` defaults to `False`. When enabled, the manager's background worker prints one structured, redacted JSON object per state transition, so printing does not run on the submission callback hot path. It is convenient for local debugging and operations, but it is not a persistent audit log. The manager, its indexes, and its snapshots exist only in the current process; a multi-process or restart-safe strategy must persist/reconcile its own order identity and outcome data.
 
-Completed transaction history and resolved block data are bounded to prevent
-long-running market-maker processes from retaining every transaction forever.
-By default, each client keeps the latest 10,000 completed transactions and 256
-resolved blocks:
+Completed transaction history and resolved block data are bounded to prevent long-running market-maker processes from retaining every transaction forever. By default, each client keeps the latest 10,000 completed transactions and 256 resolved blocks:
 
 ```python
 client = dx.AsyncChainClient(
@@ -406,35 +300,19 @@ client = dx.AsyncChainClient(
 )
 ```
 
-The same options are available on `ChainClient`. Active transactions are never
-evicted. Evicting an old completed transaction from client indexes does not
-invalidate a ticket still held by application code. Persist audit history
-outside the SDK before relying on these bounded in-process indexes.
+The same options are available on `ChainClient`. Active transactions are never evicted. Evicting an old completed transaction from client indexes does not invalidate a ticket still held by application code. Persist audit history outside the SDK before relying on these bounded in-process indexes.
 
-Timestamp-nonce allocation is unique only within the current client process.
-Coordinate explicit nonces when multiple processes or machines submit for the
-same account. For latency-sensitive paths, pass `market_id` for perp and the
-bytes32 `pair` for spot directly; the async order methods deliberately avoid a
-symbol-resolution RPC.
+Timestamp-nonce allocation is unique only within the current client process. Coordinate explicit nonces when multiple processes or machines submit for the same account. For latency-sensitive paths, pass `market_id` for perp and the bytes32 `pair` for spot directly; the async order methods deliberately avoid a symbol-resolution RPC.
 
-The async client also protects urgent market-maker actions from ordinary quote
-traffic:
+The async client also protects urgent market-maker actions from ordinary quote traffic:
 
-- `node_pool_limit_per_account` describes the connected node's per-account
-  transaction-pool limit and defaults to 50.
-- Normal submissions use `max_pool_transactions_per_account`, which defaults
-  to 48.
-- `priority_pool_reserve` defaults to 2, so fast cancels and explicit
-  replacements can use up to 50 pool positions with the default configuration.
-- A cancel submitted with `fast_cancel=True`, or an explicit
-  `await ticket.replace()` no-op, may use the configured priority reserve.
-- Urgent encoding overtakes normal encoding jobs that have not started.
-  Encoding already in progress is allowed to finish, because the cached
-  Substrate runtime encoder must remain serialized.
+- `node_pool_limit_per_account` describes the connected node's per-account transaction-pool limit and defaults to 50.
+- Normal submissions use `max_pool_transactions_per_account`, which defaults to 48.
+- `priority_pool_reserve` defaults to 2, so fast cancels and explicit replacements can use up to 50 pool positions with the default configuration.
+- A cancel submitted with `fast_cancel=True`, or an explicit `await ticket.replace()` no-op, may use the configured priority reserve.
+- Urgent encoding overtakes normal encoding jobs that have not started. Encoding already in progress is allowed to finish, because the cached Substrate runtime encoder must remain serialized.
 
-This SDK-side priority complements the chain transaction priority; it does not
-guarantee inclusion in the current block. The SDK validates that the normal
-limit plus the priority reserve does not exceed the configured node limit:
+This SDK-side priority complements the chain transaction priority; it does not guarantee inclusion in the current block. The SDK validates that the normal limit plus the priority reserve does not exceed the configured node limit:
 
 ```python
 client = dx.AsyncChainClient(
@@ -445,9 +323,7 @@ client = dx.AsyncChainClient(
 )
 ```
 
-The defaults are appropriate for a node with a per-account pool limit of 50.
-When connecting to a custom node with a different limit, configure both the
-node capability and the amount the strategy should use:
+The defaults are appropriate for a node with a per-account pool limit of 50. When connecting to a custom node with a different limit, configure both the node capability and the amount the strategy should use:
 
 ```python
 client = dx.AsyncChainClient(
@@ -458,10 +334,7 @@ client = dx.AsyncChainClient(
 )
 ```
 
-`ChainClient` accepts the same three options for its synchronous transaction
-tickets. Setting a larger node limit alone does not increase strategy traffic;
-raise `max_pool_transactions_per_account` explicitly after considering stale
-quote risk.
+`ChainClient` accepts the same three options for its synchronous transaction tickets. Setting a larger node limit alone does not increase strategy traffic; raise `max_pool_transactions_per_account` explicitly after considering stale quote risk.
 
 ## API usage (v1)
 
@@ -484,9 +357,7 @@ funding = api.v1.perp.funding_rate(symbol="ETH-USDC")
 lending_status = api.v1.lending.market_status(asset="USDC")
 ```
 
-`api.v1.ws.websocket_url()` returns the v1 WebSocket endpoint URL.
-For request payload construction, `deepx_sdk.ws_client` also exposes
-`v1_subscribe(...)`, `v1_unsubscribe(...)`, `v1_list(...)`, and `v1_post(...)`.
+`api.v1.ws.websocket_url()` returns the v1 WebSocket endpoint URL. For request payload construction, `deepx_sdk.ws_client` also exposes `v1_subscribe(...)`, `v1_unsubscribe(...)`, `v1_list(...)`, and `v1_post(...)`.
 
 ## On-chain usage
 
@@ -514,22 +385,9 @@ You can override the precompile address per call via `precompile_address`.
 Notes:
 
 - `pair` is a bytes32 hex string (64 hex chars, with or without `0x`).
-- Runtime compatibility (new node): `MarketSpec.min_order_size` was renamed
-  to `min_qty` on-chain. SDK keeps `min_order_size` and also exposes
-  `min_qty` aliases in Python objects.
-- Optional per-tx overrides on timestamp-nonce tx paths
-  (`chain.perp_market.place_*` / `cancel_order` /
-  `close_position_limit` / `close_position` / `close_position_market`,
-  `chain.spot_market.*`):
-  `chain_id`, `gas_limit`, `max_fee_per_gas`, `max_priority_fee_per_gas`,
-  `use_legacy`, `nonce_ms`, `wait_for_finalized`, `timeout_ms`.
-  Fee fields default to `0`. If RPC gas estimation fails for a precompile
-  call, SDK signs with `gas_limit=500000`; pass `gas_limit` to override.
-- Optional per-tx overrides on transaction-count nonce tx paths
-  (`chain.subaccount_client.*`, `chain.lending.*`,
-  `chain.perp_market.set_profit_and_loss_point`):
-  `chain_id`, `gas_limit`, `max_fee_per_gas`, `max_priority_fee_per_gas`,
-  `use_legacy`, `nonce`, `wait_for_finalized`, `timeout_ms`.
+- Runtime compatibility (new node): `MarketSpec.min_order_size` was renamed to `min_qty` on-chain. SDK keeps `min_order_size` and also exposes `min_qty` aliases in Python objects.
+- Optional per-tx overrides on timestamp-nonce tx paths (`chain.perp_market.place_*` / `cancel_order`, `chain.spot_market.*`, `chain.subaccount_client.no_op`): `chain_id`, `gas_limit`, `max_fee_per_gas`, `max_priority_fee_per_gas`, `use_legacy`, `nonce_ms`, `wait_for_finalized`, `timeout_ms`. DeepX charges no gas (the EVM base fee is 0), so the fee fields default to `0` and are inert; `gas_limit` is still a required EVM transaction field — if RPC gas estimation fails for a precompile call, the SDK signs with `gas_limit=500000`; pass `gas_limit` to override.
+- Optional per-tx overrides on transaction-count nonce tx paths (`chain.subaccount_client.*`, `chain.lending.*`, `chain.perp_market.set_profit_and_loss_point` / `close_position_limit` / `close_position` / `close_position_market` / `settle_pnl`): `chain_id`, `gas_limit`, `max_fee_per_gas`, `max_priority_fee_per_gas`, `use_legacy`, `nonce`, `wait_for_finalized`, `timeout_ms`.
 
 ### Perp market orders
 
@@ -553,9 +411,7 @@ res = chain.perp_market.place_perp_order_market(
 print(res.order_id, res.tx_hash)
 ```
 
-`place_perp_order_market` always sends `price=0` and ignores take_profit/stop_loss.
-`slippage` (bps, 1 bps = 0.01%) caps the max adverse price vs the oracle for a
-market order; `None` means no user cap (market `max_deviation_bps` still applies).
+`place_perp_order_market` always sends `price=0` and ignores take_profit/stop_loss. `slippage` (bps, 1 bps = 0.01%) caps the max adverse price vs the oracle for a market order; `None` means no user cap (market `max_deviation_bps` still applies).
 
 ```python
 # IOC (Immediate or Cancel): fill what can be filled immediately,
@@ -571,13 +427,7 @@ res = chain.perp_market.place_perp_order_ioc(
 print(res.order_id, res.tx_hash)
 ```
 
-Leverage is **not** a per-order parameter — it's a per-subaccount sizing cap
-(`max_notional = available_margin × effective_leverage`), set globally or per
-market before trading. Values are scaled by `LEVERAGE_PRECISION` (1000):
-10x = 10000, and **0.1x steps** are allowed — the value must be a multiple of
-`LEVERAGE_STEP` (100), e.g. 12.5x = 12500 (out-of-range/invalid values fail
-with `22_6 InvalidLeverage`). The more conservative of global vs per-market
-wins; `None` clears an override.
+Leverage is **not** a per-order parameter — it's a per-subaccount sizing cap (`max_notional = available_margin × effective_leverage`), set globally or per market before trading. Values are scaled by `LEVERAGE_PRECISION` (1000): 10x = 10000, and **0.1x steps** are allowed — the value must be a multiple of `LEVERAGE_STEP` (100), e.g. 12.5x = 12500 (out-of-range/invalid values fail with `22_6 InvalidLeverage`). The more conservative of global vs per-market wins; `None` clears an override.
 
 ```python
 chain.perp_market.set_global_leverage(max_leverage=10_000)            # 10x global
@@ -589,30 +439,15 @@ chain.perp_market.per_market_max_leverage_for(market_id=3)  # -> 0 (no override)
 chain.perp_market.effective_leverage_for(market_id=3)       # -> min(global, override or global)
 ```
 
-Each subaccount may hold at most `max_active_orders` open orders **per
-market** (currently 128; owner-configurable via `update_max_active_orders_num`,
-Stop orders exempt). Exceeding it fails with `22_4 TooManyActiveOrders`. The
-limit is on-chain configuration, not a constant — read it from
-`chain.perp_market.perp_markets(market_id=...).max_active_orders` (or the
-REST `maxOpenOrders` field) instead of hardcoding it.
+Each subaccount may hold at most `max_active_orders` open orders **per market** (currently 128; owner-configurable via `update_max_active_orders_num`, Stop orders exempt). Exceeding it fails with `22_4 TooManyActiveOrders`. The limit is on-chain configuration, not a constant — read it from `chain.perp_market.perp_markets(market_id=...).max_active_orders` (or the REST `maxOpenOrders` field) instead of hardcoding it.
 
 A runnable version is in [`examples/leverage.py`](examples/leverage.py).
 
-Orders can also be placed through the REST API — it builds a signed extrinsic
-client-side and submits via `/v1/chain/tx/*`: `api.v1.chain_tx.place_perp_order_ioc(...)`.
-Both paths take the same order parameters. On-chain reverts surface as
-`ChainError` and REST rejections as `APIError` (see [Error codes](#error-codes)).
+Orders can also be placed through the REST API — it builds a signed extrinsic client-side and submits via `/v1/chain/tx/*`: `api.v1.chain_tx.place_perp_order_ioc(...)`. Both paths take the same order parameters. On-chain reverts surface as `ChainError` and REST rejections as `APIError` (see [Error codes](#error-codes)).
 
-The high-level `chain.perp_market.place_order(..., order_type="ioc")` dispatcher
-also routes to `place_perp_order_ioc`. Accepted aliases: `"ioc"`, `"I"`, `"IOC"`, `3`.
+The high-level `chain.perp_market.place_order(..., order_type="ioc")` dispatcher also routes to `place_perp_order_ioc`. Accepted aliases: `"ioc"`, `"I"`, `"IOC"`, `3`.
 
-All perp place methods accept an optional `cloid` (client order id, `int`) — and
-so do the `place_order` dispatcher and the REST `api.v1.chain_tx.place_perp_order*`
-methods. A cloid becomes the order's oid, so you can cancel immediately without
-waiting for the system oid. Valid range on-chain: `[2**31 - 1, 2**32 - 2]`;
-a cloid is consumed forever once used (even after fill/cancel) — reuse is
-rejected with `22_76 PerpDuplicateClientOrderId`, out-of-range with
-`22_75 PlacePerpExceedClientOrderId`.
+All perp place methods accept an optional `cloid` (client order id, `int`) — and so do the `place_order` dispatcher and the REST `api.v1.chain_tx.place_perp_order*` methods. A cloid becomes the order's oid, so you can cancel immediately without waiting for the system oid. Valid range on-chain: `[2**31 - 1, 2**32 - 2]`; a cloid is consumed forever once used (even after fill/cancel) — reuse is rejected with `22_76 PerpDuplicateClientOrderId`, out-of-range with `22_75 PlacePerpExceedClientOrderId`.
 
 ```python
 res = chain.perp_market.place_perp_order_ioc(market_id=3, is_long=True, size=123,
@@ -628,18 +463,9 @@ res = chain.perp_market.cancel_order(market_id=3, order_id=12345)
 print(res.order_id, res.tx_hash)
 ```
 
-`cancel_order` (and `api.v1.chain_tx.cancel_perp_order`) accepts an optional
-`fast_cancel=True`: the chain skips the `OrderCancelled` event and prioritizes
-the cancel, so the SDK waits for inclusion only and echoes the requested
-`order_id` instead of parsing it from the event.
+`cancel_order` (and `api.v1.chain_tx.cancel_perp_order`) accepts an optional `fast_cancel=True`: the chain skips the `OrderCancelled` event and prioritizes the cancel, so the SDK waits for inclusion only and echoes the requested `order_id` instead of parsing it from the event.
 
-`modify_order` atomically cancels an open order and places a new one in a
-single extrinsic (`Subaccount.modify_orders`, transactional — the old order
-survives if the new one fails any PlaceOrder check). The new order is a fresh
-order, so all parameters are explicit; success returns a NEW `order_id`
-(`res.canceled_order_id` is the old one). Perp additionally supports
-`new_total_quantity` (total size including the filled part: SDK places
-`new_total - filled`; equal → cancel-only; smaller → local `ValueError`):
+`modify_order` atomically cancels an open order and places a new one in a single extrinsic (`Subaccount.modify_orders`, transactional — the old order survives if the new one fails any PlaceOrder check). The new order is a fresh order, so all parameters are explicit; success returns a NEW `order_id` (`res.canceled_order_id` is the old one). Perp additionally supports `new_total_quantity` (total size including the filled part: SDK places `new_total - filled`; equal → cancel-only; smaller → local `ValueError`):
 
 ```python
 res = chain.perp_market.modify_order(
@@ -665,10 +491,7 @@ res = chain.perp_market.close_position_limit(
 print(res.order_id, res.tx_hash)
 ```
 
-PnL settlement converts a position's floating PnL + pending funding into real
-USDC deposit/borrow (borrows accrue interest, so floating losses get more
-expensive once settled). The platform cranker settles losing positions; settle
-profitable ones yourself. It's permissionless and idempotent:
+PnL settlement converts a position's floating PnL + pending funding into real USDC deposit/borrow (borrows accrue interest, so floating losses get more expensive once settled). The platform cranker settles losing positions; settle profitable ones yourself. It's permissionless and idempotent:
 
 ```python
 res = chain.perp_market.settle_pnl(market_id=3)
@@ -728,14 +551,9 @@ res = chain.spot_market.subaccount_place_order_sell_ioc_b(
 print(res.order_id, res.tx_hash)
 ```
 
-The high-level `chain.spot_market.place_order(..., order_type="ioc")` dispatcher
-also routes to `subaccount_place_order_{buy,sell}_ioc_b`. Accepted aliases:
-`"ioc"`, `"I"`, `"IOC"`, `3`.
+The high-level `chain.spot_market.place_order(..., order_type="ioc")` dispatcher also routes to `subaccount_place_order_{buy,sell}_ioc_b`. Accepted aliases: `"ioc"`, `"I"`, `"IOC"`, `3`.
 
-Spot place methods also accept an optional `cloid` (same semantics and range as
-perp; spot-specific errors are `20_43 PlaceSpotExceedClientOrderId` /
-`20_45 SpotDuplicateClientOrderId`). Note `auto_cancel` no longer exists
-on-chain; the kwarg is kept for compatibility but ignored.
+Spot place methods also accept an optional `cloid` (same semantics and range as perp; spot-specific errors are `20_43 PlaceSpotExceedClientOrderId` / `20_45 SpotDuplicateClientOrderId`). Note `auto_cancel` no longer exists on-chain; the kwarg is kept for compatibility but ignored.
 
 ```python
 res = chain.spot_market.subaccount_cancel_order_buy_b(
@@ -745,27 +563,15 @@ res = chain.spot_market.subaccount_cancel_order_buy_b(
 print(res.order_id, res.tx_hash)
 ```
 
-Spot cancels (`subaccount_cancel_order_{buy,sell}_b`, the `cancel_order`
-dispatcher, and `api.v1.chain_tx.cancel_spot_order_{buy,sell}`) accept
-`fast_cancel=True` with the same semantics as perp.
+Spot cancels (`subaccount_cancel_order_{buy,sell}_b`, the `cancel_order` dispatcher, and `api.v1.chain_tx.cancel_spot_order_{buy,sell}`) accept `fast_cancel=True` with the same semantics as perp.
 
 ### Intra-block action ordering (protocol guarantee)
 
-Within a block, actions execute in a fixed category order: **(1) no_op →
-(2) cancels → (3) order-book actions (place/modify/close) → (4) others**.
-This is a protocol-level guarantee, so SDK users can rely on it:
+Within a block, actions execute in a fixed category order: **(1) no_op → (2) cancels → (3) order-book actions (place/modify/close) → (4) others**. This is a protocol-level guarantee, so SDK users can rely on it:
 
-- **Cancel-then-place is safe without waiting.** If you fire a cancel and a
-  new place back-to-back and they land in the same block, the cancel executes
-  first — the freed margin/order slot is available to the new order. You do
-  not need to wait for the cancel's confirmation before re-placing.
-  (`modify_order` is still the cleaner atomic primitive for price/size
-  changes — it's a single transactional extrinsic in category 3.)
-- **`fast_cancel` priority is mempool-selection, not block order.** A
-  `fast_cancel=True` tx is more likely to be *included* in the current block;
-  inside the block it executes in the same cancel category as regular cancels.
-- Within a category, actions run in proposer submission order — timestamp
-  nonces do not reorder execution.
+- **Cancel-then-place is safe without waiting.** If you fire a cancel and a new place back-to-back and they land in the same block, the cancel executes first — the freed margin/order slot is available to the new order. You do not need to wait for the cancel's confirmation before re-placing. (`modify_order` is still the cleaner atomic primitive for price/size changes — it's a single transactional extrinsic in category 3.)
+- **`fast_cancel` priority is mempool-selection, not block order.** A `fast_cancel=True` tx is more likely to be *included* in the current block; inside the block it executes in the same cancel category as regular cancels.
+- Within a category, actions run in proposer submission order — timestamp nonces do not reorder execution.
 
 ### Perp market view calls
 
@@ -813,12 +619,7 @@ res = chain.subaccount_client.rename_subaccount(
 print(res.tx_hash, res.event)  # event can be None for non-event calls
 ```
 
-`no_op` consumes a timestamp nonce with no state change. Its main use is
-replacing a stuck pending transaction: submit it with the **same** `nonce_ms`
-as the pending tx — `no_op` has the highest mempool priority, so it evicts the
-pending tx and permanently consumes that nonce slot (the old tx can never
-execute afterwards). With `nonce_ms=None` a fresh millisecond timestamp is
-used. A reused/expired nonce is rejected with a 1010 pool error.
+`no_op` consumes a timestamp nonce with no state change. Its main use is replacing a stuck pending transaction: submit it with the **same** `nonce_ms` as the pending tx — `no_op` has the highest mempool priority, so it evicts the pending tx and permanently consumes that nonce slot (the old tx can never execute afterwards). With `nonce_ms=None` a fresh millisecond timestamp is used. A reused/expired nonce is rejected with a 1010 pool error.
 
 ```python
 res = chain.subaccount_client.no_op(nonce_ms=1781757000123)  # replace pending tx with that nonce
@@ -862,14 +663,7 @@ delegates = chain.subaccount_client.delegate_accounts_for(owner="0xYOUR_OWNER")
 print(stats, info, delegates)
 ```
 
-Delegate accounts are **wallet-level** operators: a delegate set on your EOA
-can act on every subaccount the wallet owns. They take a display name and an
-expiry (wall-clock ms; past values are rejected with `19_34 DelegateExpiry`);
-re-setting the same delegate updates its name/expiry. Delegates are
-order-only: mode `0=PlaceOrCancelOrder` (the default) places and cancels
-orders, `3=Disable` suspends the delegate without removing it. (Modes
-`1`/`2` — deposit/withdraw and subaccount management — are disabled
-on-chain and rejected by both the SDK and the chain.)
+Delegate accounts are **wallet-level** operators: a delegate set on your EOA can act on every subaccount the wallet owns. They take a display name and an expiry (wall-clock ms; past values are rejected with `19_34 DelegateExpiry`); re-setting the same delegate updates its name/expiry. Delegates are order-only: mode `0=PlaceOrCancelOrder` (the default) places and cancels orders, `3=Disable` suspends the delegate without removing it. (Modes `1`/`2` — deposit/withdraw and subaccount management — are disabled on-chain and rejected by both the SDK and the chain.)
 
 ```python
 chain.subaccount_client.set_delegate_account(
@@ -891,13 +685,11 @@ chain.subaccount_client.remove_delegate_account(
 `chain.perp_market.perp_markets(market_id=...)` decodes using the latest chain layout.
 
 - Fields: `id`, `name`, `base_symbol`, `base_address`, `base_decimal`, `quote_market_id`, `quote_symbol`, `quote_address`, `quote_decimal`, `network`, `height`, `funding_rate`, `last_cacl_funding_rate_time`, `oracle_price`, `mark_price`, `max_deviation_bps`, `initial_margin_ratio`, `maintenance_margin_ratio`, `max_active_orders`, `is_quote_market`, `taker_fee_rate`, `maker_fee_rate`, `order_spec`, `open_interest`, `long_open_pos_num`, `short_open_pos_num`, `base_interest_rate`, `impact_margin_value`, `funding_rate_clamp_upper_bound`, `funding_rate_clamp_lower_bound`, `liquidation_spec`.
-- `order_spec` fields: `min_order_size`, `tick_size`, `step_size`,
-  optional `min_notional`; alias `min_qty` is also available.
+- `order_spec` fields: `min_order_size`, `tick_size`, `step_size`, optional `min_notional`; alias `min_qty` is also available.
 - `liquidation_spec` fields: `liquidation_duration`, `liquidity_bucket_slippage_step`, `liquidity_bucket_slippage_limit`, `liquidity_dust_value`, `liquidation_fee_rate`.
 - `liquidation_fee_rate` fields: `liquidator_share_fee_rate`, `insurance_fund_share_fee_rate`.
 
-`chain.market.get_perp_price_bounds(market_id=...)` also returns
-`min_order_size` with alias `min_qty`, and optional `min_notional`.
+`chain.market.get_perp_price_bounds(market_id=...)` also returns `min_order_size` with alias `min_qty`, and optional `min_notional`.
 
 `chain.subaccount_client.subaccount_info(address=...)` supports the latest `AccountInfo` layout, the delegates-vec layout, and the current external legacy `User` layout.
 
@@ -957,32 +749,22 @@ Note:
 
 ### Quota: query & claim
 
-Every order/cancel costs 1 quota; trading volume earns claimable quota.
-Claiming is **backend-executed**: users can't add quota on-chain themselves
-(chain `add_quota` is restricted to authorized accounts) — the SDK signs a
-fixed message and the backend submits the chain tx asynchronously.
+Every order/cancel costs 1 quota; trading volume earns claimable quota. Claiming is **backend-executed**: users can't add quota on-chain themselves (chain `add_quota` is restricted to authorized accounts) — the SDK signs a fixed message and the backend submits the chain tx asynchronously.
 
 ```python
 q = api.v1.account.wallet_quota(address="0xYOUR_WALLET")     # {claimable, remaining}
 s = api.v1.account.quota_summary(wallet="0xYOUR_WALLET")     # earned/granted/pending + volumes (internal API)
 
 # personal-signs with the client's private_key (or pass private_key=/wallet=)
-res = api.v1.account.claim_quota(wallet="0xYOUR_WALLET")     # POST /v1/account/quota/claim
+res = api.v1.account.claim_quota(wallet="0xYOUR_WALLET")     # POST /v1/account/wallets/{address}/quota/claims
 claim_id = res["claim"]["id"]                                # raw object; status="noop" when nothing to claim
 
 final = api.v1.account.wait_quota_claim(claim_id=claim_id, timeout_s=120)  # polls to confirmed
 ```
 
-`idempotency_key` makes retries safe (same key → same claim; one active claim
-per wallet). The on-chain view of the same quota is
-`chain.system.system_account(address).quota` (0 = not activated,
-2\*\*32-1 = frozen).
+`idempotency_key` makes retries safe (same key → same claim; one active claim per wallet). The on-chain view of the same quota is `chain.system.system_account(address).quota` (0 = not activated, 2\*\*32-1 = frozen).
 
-Quota can also be **bought** directly on-chain (`Lending.buy_quota`): cost is
-`QuoteAmountPerQuota × quota` in USDC (currently 500 base units = 0.0005 USDC
-per quota). Paid from the signer's wallet by default, or from a subaccount's
-spot balance via `from_subaccount`. Note the extrinsic itself costs 1 quota,
-so buying N quota nets N−1.
+Quota can also be **bought** directly on-chain (`Lending.buy_quota`): cost is `QuoteAmountPerQuota × quota` in USDC (currently 500 base units = 0.0005 USDC per quota). Paid from the signer's wallet by default, or from a subaccount's spot balance via `from_subaccount`. Note the extrinsic itself costs 1 quota, so buying N quota nets N−1.
 
 ```python
 res = chain.lending.buy_quota(
@@ -996,19 +778,14 @@ A runnable version is in [`examples/quota.py`](examples/quota.py).
 
 ## EVM bridge (Bool Network)
 
-> **Scope:** the SDK currently supports EVM↔EVM bridging between **Ethereum
-> and DeepX** only. For other chains and routes (e.g. Bitcoin, Solana), please
-> use the official bridge on our website: [deepx.fi](https://deepx.fi).
+> **Scope:** the SDK currently supports EVM↔EVM bridging between **Ethereum and DeepX** only. For other chains and routes (e.g. Bitcoin, Solana), please use the official bridge on our website: [deepx.fi](https://deepx.fi).
 
-The EVM bridge (`MultiTokenBridge`, a Bool Network consumer) moves tokens
-between DeepX and other EVM chains. The flow:
+The EVM bridge (`MultiTokenBridge`, a Bool Network consumer) moves tokens between DeepX and other EVM chains. The flow:
 
 1. `get_bridge_fee` quotes the relayer fee in the source chain's gas token.
 2. An off-chain **authorizer** service issues an EIP-712 approval signature.
-3. `bridgeOut` locks/burns the tokens on the source chain (ERC-20 tokens need
-   an `approve` first — the SDK handles it automatically).
-4. Bool Network's relayer delivers the message and the destination bridge
-   releases/mints to the recipient — **no destination-side action needed**.
+3. `bridgeOut` locks/burns the tokens on the source chain (ERC-20 tokens need an `approve` first — the SDK handles it automatically).
+4. Bool Network's relayer delivers the message and the destination bridge releases/mints to the recipient — **no destination-side action needed**.
 
 ```python
 from deepx_sdk.bridge import BridgeApi
@@ -1035,23 +812,22 @@ event = dst.wait_bridge_in(recipient="0xRECIPIENT_ON_SEPOLIA",
 print(event["amount"], event["tx_hash"])
 ```
 
-Current deployments:
+Current deployments (default network — the DeepX production deployment):
 
 | Chain | Chain ID | Bridge |
 | ----- | -------- | ------ |
 | DeepX | 4846 | `0x874c408fd66117a2edb953fe68cadccd675e5c2c` |
 | Ethereum Sepolia | 11155111 | `0x70e6adc5c6c2f131b32ce8347876e6c1af4f65e8` |
 
-Token ids: `ETH=1, USDT=2, USDC=3, DAI=4, BNB=5, OKB=6` (`BRIDGE_TOKEN_MAP`).
-A token must be registered on **both** chains' bridges before it can be
-bridged; `get_token_info(token_id)` returns the per-chain registration.
+The `BridgeApi()` defaults resolve to this deployment. Internal/other deployments are used by passing explicit `rpc_url` / `chain_id` / `contract_address` (see `examples/bridge_evm.py`'s `BRIDGE_SRC_*` overrides).
+
+Token ids: `ETH=1, USDT=2, USDC=3, DAI=4, BNB=5, OKB=6` (`BRIDGE_TOKEN_MAP`). A token must be registered on **both** chains' bridges before it can be bridged; `get_token_info(token_id)` returns the per-chain registration.
 
 A runnable version is in [`examples/bridge_evm.py`](examples/bridge_evm.py).
 
 ## Error codes
 
-The SDK exposes two parallel error registries that mirror the upstream
-specs (`https://github.com/deepxfinance/notes-and-specs/blob/main/specs/error-codes.md`):
+The SDK exposes two parallel error registries that mirror the upstream specs (`https://github.com/deepxfinance/notes-and-specs/blob/main/specs/error-codes.md`):
 
 | Source                       | Code format                                             | Range                       | When raised                                                     |
 | ---------------------------- | ------------------------------------------------------- | --------------------------- | --------------------------------------------------------------- |
@@ -1120,11 +896,8 @@ print(format_msg("Invalid parameter: {param}.", param="side"))
 
 When the upstream YAML registries change:
 
-1. Update the matching entry in `_error_codes.py` (the `_CHAIN_ENTRIES` /
-   `_API_ENTRIES` tuples at the top of the module).
-2. The test suite (`tests/test_error_codes.py`) enforces registry invariants —
-   sequential numbering from `10001`, pallet-index alignment, name format,
-   and category coverage. Any deviation fails the build.
+1. Update the matching entry in `_error_codes.py` (the `_CHAIN_ENTRIES` / `_API_ENTRIES` tuples at the top of the module).
+2. The test suite (`tests/test_error_codes.py`) enforces registry invariants — sequential numbering from `10001`, pallet-index alignment, name format, and category coverage. Any deviation fails the build.
 
 ## WebSocket usage (v1)
 
@@ -1240,8 +1013,7 @@ res = chain.perp_market.place_perp_order_limit(
 print(res.order_id, res.tx_hash)
 ```
 
-Spot pair (ETH/USDC):
-`pair = 0x950c1bb15508369148679bf2921417929f1465c068c4b22a980c3c23535846c0`
+Spot pair (ETH/USDC): `pair = 0x950c1bb15508369148679bf2921417929f1465c068c4b22a980c3c23535846c0`
 
 ```python
 pair = "0x950c1bb15508369148679bf2921417929f1465c068c4b22a980c3c23535846c0"
