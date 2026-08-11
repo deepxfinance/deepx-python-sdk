@@ -344,6 +344,8 @@ api = dx.ApiClient(base_url="http://127.0.0.1:8080")
 ping = api.v1.ping()
 subaccounts = api.v1.account.wallet_subaccounts(address="0xYOUR_WALLET")
 subaccount = api.v1.account.subaccount_info(address="0xYOUR_SUBACCOUNT")
+delegates = api.v1.account.wallet_delegate_accounts(address="0xYOUR_WALLET")
+delegators = api.v1.account.delegator_accounts(address="0xDELEGATE")
 
 spot_markets = api.v1.spot.markets()
 spot_candles = api.v1.spot.candles(
