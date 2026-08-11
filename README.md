@@ -682,6 +682,8 @@ chain.subaccount_client.remove_delegate_account(
 )
 ```
 
+A runnable version is in [`examples/delegate.py`](examples/delegate.py).
+
 ### Chain return fields
 
 `chain.perp_market.perp_markets(market_id=...)` decodes using the latest chain layout.
