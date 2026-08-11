@@ -34,7 +34,7 @@ class RecoveryConfig:
     # marked reconciliation-required so its pool slot is released and the
     # caller is told to reconcile. Deliberately much larger than the
     # inclusion wait timeout: slow-but-successful inclusions (degraded
-    # devnet has shown 30-50s) must not be falsely flagged.
+    # the dev deployment has shown 30-50s) must not be falsely flagged.
     stale_ms: int = 60_000
 
 
@@ -326,7 +326,7 @@ class RecoveryTracker:
 
     async def _handle_new_head(self, update: object) -> None:
         # Must return fast: the transport drops the subscription when its
-        # notification queue overflows (devnet produces ~14 heads/sec, and a
+        # notification queue overflows (the dev deployment produces ~14 heads/sec, and a
         # catch-up scan through a slow RPC link takes far longer per block).
         self._last_head_at = time.monotonic()
         number = _head_number(update)

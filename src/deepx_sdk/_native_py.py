@@ -1167,7 +1167,7 @@ def _create_substrate(
                 ) from last_error
             raise last_error
         raise RuntimeError("Unable to connect to a Substrate WebSocket endpoint.")
-    # DeepX AccountNonceApi returns an 8-byte AccountIndex on devnet, while
+    # DeepX AccountNonceApi returns an 8-byte AccountIndex on the dev deployment, while
     # substrate-interface 1.8 decodes account_nonce as U32 in strict mode.
     # Non-strict mode preserves the decoded nonce and ignores the trailing bytes.
     try:
@@ -1279,7 +1279,7 @@ def _ensure_receipt_success(receipt: Any, *, allow_unknown: bool = False) -> Non
     if extrinsic_idx is not None and scoped_events and (has_success or not has_failed):
         return
 
-    # Some devnet nodes return enough block data to locate the extrinsic but
+    # Some dev nodes return enough block data to locate the extrinsic but
     # too few decodable events to scope System::ExtrinsicSuccess. For no-event
     # calls, inclusion plus absence of an explicit failure is the strongest
     # status available.

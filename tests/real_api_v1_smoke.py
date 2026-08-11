@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import sys
 import time
 import traceback
@@ -21,9 +22,9 @@ from deepx_sdk.ws_client import (
 )
 
 
-BASE_URL = "https://rest-api-devnet.deepx.fi"
-WS_BASE_URL = "wss://ws-api-devnet.deepx.fi"
-SUBSTRATE_WS = "wss://devnet-rpc-new.deepx.fi"
+BASE_URL = os.environ.get("DEEPX_REST_URL", "https://rest-api-testnet.deepx.fi")
+WS_BASE_URL = os.environ.get("DEEPX_WS_URL", "wss://ws-api-testnet.deepx.fi")
+SUBSTRATE_WS = os.environ.get("DEEPX_SUBSTRATE_WS", "wss://rpc-testnet.deepx.fi")
 REPORT = Path("/tmp/deepx_api_v1_real_report.json")
 SECRET_KEY_FILE = Path(__file__).resolve().parents[1] / ".sk"
 

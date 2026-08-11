@@ -1146,9 +1146,9 @@ def test_bridge_api_net_resolution() -> None:
     assert default.chain_id == expected.chain_id
     assert default.contract_address == expected.bridge_contract
 
-    devnet = bridge_mod.BridgeApi(net="devnet")
-    assert devnet.chain_id == 4845
-    assert devnet.contract_address == "0xa32408eD9f1dFa1e2dc30143F9133Af31E8514ed"
+    # mainnet is registered but not deployed yet: construction raises a clear error.
+    with pytest.raises(ValueError, match="not deployed yet"):
+        bridge_mod.BridgeApi(net="mainnet")
 
     custom = bridge_mod.BridgeApi(
         rpc_url="https://x", chain_id=1, contract_address="0x" + "11" * 20

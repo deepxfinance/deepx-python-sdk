@@ -681,7 +681,7 @@ def _decode_delegate_info(item: tuple) -> DelegateInfo:
 def _decode_subaccount_info(info: tuple, layout: str) -> SubaccountInfo:
     if layout == "delegates_vec":
         # 8-field layout: authority, delegates vec, name, spot, borrow,
-        # next_order_id, status, margin flag. Current devnet precompile.
+        # next_order_id, status, margin flag. Current dev precompile.
         spot_positions = [
             SubaccountSpotPosition(symbol=_decode_bytes(pos[0]), token_amount=int(pos[1]))
             for pos in info[3]

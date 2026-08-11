@@ -724,7 +724,7 @@ def test_perp_position_decode_supports_legacy_and_settle_layouts() -> None:
 
 def test_perp_position_and_order_decode_scaled_leverage() -> None:
     # Regression: on-chain leverage is u64 (scaled by LEVERAGE_PRECISION=1000,
-    # 10x=10000); the SDK used to decode it as uint8 -> NonEmptyPaddingBytes (seen live on devnet)
+    # 10x=10000); the SDK used to decode it as uint8 -> NonEmptyPaddingBytes (seen live on the dev deployment)
     pos = (
         3, True, 10**18, 1_800_000_000, 10000, -5, 1, 0, 0,
         bytes.fromhex("22" * 20), 0, 0, 0, 1_800_000_000,

@@ -15,9 +15,9 @@ from eth_account import Account
 from eth_utils import keccak
 
 
-EVM_RPC_URL = os.environ.get("DEEPX_EVM_RPC_URL", "https://devnet-rpc-new.deepx.fi")
-SUBSTRATE_WS = os.environ.get("DEEPX_SUBSTRATE_WS", "wss://devnet-rpc-new.deepx.fi")
-REST_URL = os.environ.get("DEEPX_REST_URL", "https://rest-api-devnet.deepx.fi")
+EVM_RPC_URL = os.environ.get("DEEPX_EVM_RPC_URL", "https://rpc-testnet.deepx.fi")
+SUBSTRATE_WS = os.environ.get("DEEPX_SUBSTRATE_WS", "wss://rpc-testnet.deepx.fi")
+REST_URL = os.environ.get("DEEPX_REST_URL", "https://rest-api-testnet.deepx.fi")
 REPORT = Path("/tmp/deepx_chain_client_real_report.json")
 SECRET_KEY_FILE = Path(__file__).resolve().parents[1] / ".sk"
 
@@ -199,7 +199,7 @@ def wait_index(fn: Callable[[], Any], attempts: int = 12, delay: float = 2.0) ->
 
 
 def api_v1() -> Any:
-    return dx.ApiClient(base_url="https://rest-api-devnet.deepx.fi", ws_base_url="wss://ws-api-devnet.deepx.fi").v1
+    return dx.ApiClient(base_url="https://rest-api-testnet.deepx.fi", ws_base_url="wss://ws-api-testnet.deepx.fi").v1
 
 
 def unique_h160(label: str, unique: int) -> str:
