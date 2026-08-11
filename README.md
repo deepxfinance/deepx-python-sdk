@@ -518,16 +518,16 @@ Notes:
   to `min_qty` on-chain. SDK keeps `min_order_size` and also exposes
   `min_qty` aliases in Python objects.
 - Optional per-tx overrides on timestamp-nonce tx paths
-  (`chain.perp_market.place_*` / `cancel_order` /
-  `close_position_limit` / `close_position` / `close_position_market`,
-  `chain.spot_market.*`):
+  (`chain.perp_market.place_*` / `cancel_order`,
+  `chain.spot_market.*`, `chain.subaccount_client.no_op`):
   `chain_id`, `gas_limit`, `max_fee_per_gas`, `max_priority_fee_per_gas`,
   `use_legacy`, `nonce_ms`, `wait_for_finalized`, `timeout_ms`.
   Fee fields default to `0`. If RPC gas estimation fails for a precompile
   call, SDK signs with `gas_limit=500000`; pass `gas_limit` to override.
 - Optional per-tx overrides on transaction-count nonce tx paths
   (`chain.subaccount_client.*`, `chain.lending.*`,
-  `chain.perp_market.set_profit_and_loss_point`):
+  `chain.perp_market.set_profit_and_loss_point` / `close_position_limit` /
+  `close_position` / `close_position_market` / `settle_pnl`):
   `chain_id`, `gas_limit`, `max_fee_per_gas`, `max_priority_fee_per_gas`,
   `use_legacy`, `nonce`, `wait_for_finalized`, `timeout_ms`.
 
@@ -967,7 +967,7 @@ q = api.v1.account.wallet_quota(address="0xYOUR_WALLET")     # {claimable, remai
 s = api.v1.account.quota_summary(wallet="0xYOUR_WALLET")     # earned/granted/pending + volumes (internal API)
 
 # personal-signs with the client's private_key (or pass private_key=/wallet=)
-res = api.v1.account.claim_quota(wallet="0xYOUR_WALLET")     # POST /v1/account/quota/claim
+res = api.v1.account.claim_quota(wallet="0xYOUR_WALLET")     # POST /v1/account/wallets/{address}/quota/claims
 claim_id = res["claim"]["id"]                                # raw object; status="noop" when nothing to claim
 
 final = api.v1.account.wait_quota_claim(claim_id=claim_id, timeout_s=120)  # polls to confirmed
@@ -1035,12 +1035,16 @@ event = dst.wait_bridge_in(recipient="0xRECIPIENT_ON_SEPOLIA",
 print(event["amount"], event["tx_hash"])
 ```
 
-Current deployments:
+Current deployments (default network — the DeepX production deployment):
 
 | Chain | Chain ID | Bridge |
 | ----- | -------- | ------ |
 | DeepX | 4846 | `0x874c408fd66117a2edb953fe68cadccd675e5c2c` |
 | Ethereum Sepolia | 11155111 | `0x70e6adc5c6c2f131b32ce8347876e6c1af4f65e8` |
+
+The `BridgeApi()` defaults resolve to this deployment. Internal/other
+deployments are used by passing explicit `rpc_url` / `chain_id` /
+`contract_address` (see `examples/bridge_evm.py`'s `BRIDGE_SRC_*` overrides).
 
 Token ids: `ETH=1, USDT=2, USDC=3, DAI=4, BNB=5, OKB=6` (`BRIDGE_TOKEN_MAP`).
 A token must be registered on **both** chains' bridges before it can be

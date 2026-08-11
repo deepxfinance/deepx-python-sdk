@@ -246,11 +246,40 @@ class AccountV1Client:
             f"/v1/account/wallets/{address}/subaccounts",
         )
 
-    def wallet_one_click_trading_accounts(self, *, address: str) -> Any:
+    def wallet_delegate_accounts(self, *, address: str) -> Any:
+        """GET /v1/account/wallets/{address}/delegate-accounts — the wallet's
+        Delegate Accounts (chain runtime 190: wallet-level delegates)."""
         _require_value("address", address)
         return self._client.request(
             "GET",
-            f"/v1/account/wallets/{address}/one-click-trading-accounts",
+            f"/v1/account/wallets/{address}/delegate-accounts",
+        )
+
+    def delegator_accounts(self, *, address: str) -> Any:
+        """GET /v1/account/delegates/{address}/delegator-accounts — wallets
+        bound to this Delegate Account."""
+        _require_value("address", address)
+        return self._client.request(
+            "GET",
+            f"/v1/account/delegates/{address}/delegator-accounts",
+        )
+
+    def internal_delegate_accounts(self, *, address: str) -> Any:
+        """GET /internal/v1/account/delegate-accounts?address=..."""
+        _require_value("address", address)
+        return self._client.request(
+            "GET",
+            "/internal/v1/account/delegate-accounts",
+            params=_clean_params({"address": address}),
+        )
+
+    def internal_delegator_accounts(self, *, address: str) -> Any:
+        """GET /internal/v1/account/delegator-accounts?address=..."""
+        _require_value("address", address)
+        return self._client.request(
+            "GET",
+            "/internal/v1/account/delegator-accounts",
+            params=_clean_params({"address": address}),
         )
 
     def subaccount_info(self, *, address: str) -> Any:
@@ -642,7 +671,7 @@ class AccountV1Client:
         idempotency_key: Optional[str] = None,
         private_key: Optional[str] = None,
     ) -> Any:
-        """Create a quota claim (POST /v1/account/quota/claim).
+        """Create a quota claim (POST /v1/account/wallets/{address}/quota/claims).
 
         The wallet personal-signs a fixed three-line message; the backend
         reserves the claimable quota and submits `Quota.sudo_add_quota`
@@ -676,7 +705,7 @@ class AccountV1Client:
             signature = "0x" + signature
         return self._client.request(
             "POST",
-            "/v1/account/quota/claim",
+            f"/v1/account/wallets/{resolved_wallet}/quota/claims",
             json_body={
                 "wallet": resolved_wallet,
                 "idempotencyKey": key_id,
