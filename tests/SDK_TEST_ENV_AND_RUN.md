@@ -16,7 +16,7 @@ export PYTHONPATH=$PWD/src
 
 Notes:
 - The SDK is pure Python; these tests do not require any native build step.
-- For `ApiClient` tests, if `API_BASE_URL` is not set, the default is the production REST endpoint.
+- For `ApiClient` tests, if `API_BASE_URL` is not set, the default is the public testnet REST endpoint.
 - Test output controls for script-style tests:
   - `SDK_TEST_VERBOSE=1`: print full response payload
   - `SDK_TEST_FAIL_ONLY=1`: print only failed items

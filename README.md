@@ -816,7 +816,7 @@ event = dst.wait_bridge_in(recipient="0xRECIPIENT_ON_SEPOLIA",
 print(event["amount"], event["tx_hash"])
 ```
 
-Current deployments (default network — the DeepX production deployment):
+Current deployments (default network — the DeepX public testnet deployment):
 
 | Chain | Chain ID | Bridge |
 | ----- | -------- | ------ |
