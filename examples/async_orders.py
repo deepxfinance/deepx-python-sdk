@@ -26,7 +26,7 @@ def _cloid() -> int:
         return int(raw)
     import random
 
-    return random.randint(2**31 - 1, 2**32 - 2)
+    return random.randint(2**31, 2**32 - 1)
 
 
 

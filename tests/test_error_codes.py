@@ -66,6 +66,13 @@ def test_lookup_chain_error_known() -> None:
     assert entry.error_index == 17
 
 
+@pytest.mark.parametrize("code", ["20_43", "22_75"])
+def test_client_order_id_range_matches_chain(code: str) -> None:
+    entry = codes.lookup_chain_error(code)
+    assert entry is not None
+    assert "[2^31, 2^32-1]" in entry.msg
+
+
 def test_lookup_chain_error_unknown() -> None:
     assert codes.lookup_chain_error("99_99") is None
     assert codes.lookup_chain_error("not-a-code") is None

@@ -50,7 +50,7 @@ PERP_PRICE = int(Decimal("1500") * (10 ** 6))      # far below mark -> rests
 SPOT_QUOTE_AMOUNT = int(Decimal("1.5") * (10 ** 6))
 SPOT_BASE_AMOUNT = int(Decimal("0.001") * (10 ** 18))
 
-CLOID = 2**31 - 1 + (int(time.time()) % 1_000_000) * 8
+CLOID = 2**31 + (int(time.time()) % 1_000_000) * 8
 
 
 # ---------------------------------------------------------------------------

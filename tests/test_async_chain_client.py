@@ -650,7 +650,7 @@ def test_async_spot_place_order_exact_shapes_and_decoders() -> None:
             quote_amount=6000,
             base_amount=60,
             order_type=3,
-            cloid=2**31 - 1,
+            cloid=2**31,
             nonce_ms=1_000_010,
         )
 
@@ -769,7 +769,7 @@ def test_async_spot_place_order_exact_shapes_and_decoders() -> None:
                         "order_type": {"Limit": "IOC"},
                         "post_only": "None",
                         "reduce_only": False,
-                        "cloid": 2**31 - 1,
+                        "cloid": 2**31,
                     }
                 },
                 "nonce": 1_000_010,

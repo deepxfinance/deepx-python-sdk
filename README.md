@@ -449,12 +449,12 @@ Orders can also be placed through the REST API — it builds a signed extrinsic 
 
 The high-level `chain.perp_market.place_order(..., order_type="ioc")` dispatcher also routes to `place_perp_order_ioc`. Accepted aliases: `"ioc"`, `"I"`, `"IOC"`, `3`.
 
-All perp place methods accept an optional `cloid` (client order id, `int`) — and so do the `place_order` dispatcher and the REST `api.v1.chain_tx.place_perp_order*` methods. A cloid becomes the order's oid, so you can cancel immediately without waiting for the system oid. Valid range on-chain: `[2**31 - 1, 2**32 - 2]`; a cloid is consumed forever once used (even after fill/cancel) — reuse is rejected with `22_76 PerpDuplicateClientOrderId`, out-of-range with `22_75 PlacePerpExceedClientOrderId`.
+All perp place methods accept an optional `cloid` (client order id, `int`) — and so do the `place_order` dispatcher and the REST `api.v1.chain_tx.place_perp_order*` methods. A cloid becomes the order's oid, so you can cancel immediately without waiting for the system oid. System order ids use `[0, 2**31 - 1]`; valid cloids use `[2**31, 2**32 - 1]`. A cloid is consumed forever once used (even after fill/cancel) — reuse is rejected with `22_76 PerpDuplicateClientOrderId`, out-of-range with `22_75 PlacePerpExceedClientOrderId`.
 
 ```python
 res = chain.perp_market.place_perp_order_ioc(market_id=3, is_long=True, size=123,
-                                             price=456, cloid=2**31 - 1)
-assert res.order_id == 2**31 - 1
+                                             price=456, cloid=2**31)
+assert res.order_id == 2**31
 chain.perp_market.cancel_order(market_id=3, order_id=res.order_id)
 ```
 
@@ -472,7 +472,7 @@ print(res.order_id, res.tx_hash)
 ```python
 res = chain.perp_market.modify_order(
     order_id=old_oid, market_id=3, is_long=True,
-    price=1_400_000_000, size=10**15, cloid=2**31 - 1,
+    price=1_400_000_000, size=10**15, cloid=2**31,
 )
 print(res.canceled_order_id, "->", res.order_id)
 

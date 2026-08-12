@@ -252,7 +252,7 @@ _CHAIN_ENTRIES: tuple[dict[str, object], ...] = (
     {"code": "20_40", "name": "InvalidSpotOrderType", "pallet": "SpotMarket",
      "msg": "Unsupported spot order type."},
     {"code": "20_43", "name": "PlaceSpotExceedClientOrderId", "pallet": "SpotMarket",
-     "msg": "Client order id (cloid) is outside the allowed range [2^31-1, 2^32-2]."},
+     "msg": "Client order id (cloid) is outside the allowed range [2^31, 2^32-1]."},
     {"code": "20_44", "name": "PlaceSpotExceedSystemOrderId", "pallet": "SpotMarket",
      "msg": "System order id range is exhausted for this subaccount."},
     {"code": "20_45", "name": "SpotDuplicateClientOrderId", "pallet": "SpotMarket",
@@ -374,7 +374,7 @@ _CHAIN_ENTRIES: tuple[dict[str, object], ...] = (
     {"code": "22_74", "name": "PlacePerpExceedSystemOrderId", "pallet": "PerpMarket",
      "msg": "System order id range is exhausted for this subaccount."},
     {"code": "22_75", "name": "PlacePerpExceedClientOrderId", "pallet": "PerpMarket",
-     "msg": "Client order id (cloid) is outside the allowed range [2^31-1, 2^32-2]."},
+     "msg": "Client order id (cloid) is outside the allowed range [2^31, 2^32-1]."},
     {"code": "22_76", "name": "PerpDuplicateClientOrderId", "pallet": "PerpMarket",
      "msg": "This client order id (cloid) was already used by the subaccount."},
     # --- InsuranceVault (Pallet 23) ---
