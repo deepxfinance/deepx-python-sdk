@@ -58,6 +58,7 @@ class AsyncComponents:
     tracker: Any
     recovery: Any
     recovery_transport: Any | None = None
+    recovery_scan_transport: Any | None = None
 
 
 @dataclass
@@ -436,11 +437,16 @@ class AsyncChainClient:
             components = await self._component_factory(self)
             self._components = components
             await components.transport.connect()
-            if (
-                components.recovery_transport is not None
-                and components.recovery_transport is not components.transport
+            connected_transports = [components.transport]
+            for candidate in (
+                components.recovery_transport,
+                components.recovery_scan_transport,
             ):
-                await components.recovery_transport.connect()
+                if candidate is not None and all(
+                    candidate is not connected for connected in connected_transports
+                ):
+                    await candidate.connect()
+                    connected_transports.append(candidate)
             await components.encoder.bootstrap()
             await components.recovery.start()
             await self.transactions.start()
@@ -461,11 +467,16 @@ class AsyncChainClient:
             for pending in tuple(components.tracker.pending_transactions):
                 if pending.status not in _TERMINAL_STATUSES:
                     pending.mark_client_closed()
-            if (
-                components.recovery_transport is not None
-                and components.recovery_transport is not components.transport
+            closed_transports = [components.transport]
+            for candidate in (
+                components.recovery_scan_transport,
+                components.recovery_transport,
             ):
-                await components.recovery_transport.close()
+                if candidate is not None and all(
+                    candidate is not closed for closed in closed_transports
+                ):
+                    await candidate.close()
+                    closed_transports.append(candidate)
             await components.transport.close()
             await self.transactions.close()
             await self._notify_capacity()
@@ -870,6 +881,10 @@ async def _production_components(client: AsyncChainClient) -> AsyncComponents:
         client.recovery_substrate_ws_endpoints,
         **reconnect_options,
     )
+    recovery_scan_transport = AsyncRpcTransport(
+        client.recovery_substrate_ws_endpoints,
+        **reconnect_options,
+    )
     encoder = ExtrinsicEncoder(
         client.substrate_ws,
         client.private_key,
@@ -885,6 +900,7 @@ async def _production_components(client: AsyncChainClient) -> AsyncComponents:
         recovery_transport,
         tracker,
         encoder,
+        scan_transport=recovery_scan_transport,
         pool_transport=transport,
         config=client.recovery_config,
     )
@@ -894,6 +910,7 @@ async def _production_components(client: AsyncChainClient) -> AsyncComponents:
         tracker=tracker,
         recovery=recovery,
         recovery_transport=recovery_transport,
+        recovery_scan_transport=recovery_scan_transport,
     )
 
 

@@ -240,12 +240,14 @@ def test_async_client_connects_and_closes_dedicated_recovery_transport() -> None
     async def run() -> None:
         submission_transport = FakeTransport()
         recovery_transport = FakeTransport()
+        recovery_scan_transport = FakeTransport()
         components = AsyncComponents(
             transport=submission_transport,
             encoder=FakeEncoder(),
             tracker=FakeTracker(),
             recovery=FakeRecovery(),
             recovery_transport=recovery_transport,
+            recovery_scan_transport=recovery_scan_transport,
         )
 
         async def factory(_client: AsyncChainClient) -> AsyncComponents:
@@ -262,6 +264,8 @@ def test_async_client_connects_and_closes_dedicated_recovery_transport() -> None
 
         assert submission_transport.connect_calls == 1
         assert recovery_transport.connect_calls == 1
+        assert recovery_scan_transport.connect_calls == 1
+        assert recovery_scan_transport.close_calls == 1
         assert recovery_transport.close_calls == 1
         assert submission_transport.close_calls == 1
 
@@ -280,8 +284,17 @@ def test_production_components_route_recovery_to_configured_endpoints() -> None:
 
         assert components.transport.connection_url == "ws://submission.test"
         assert components.recovery_transport.connection_url == "ws://recovery.test"
+        assert (
+            components.recovery_scan_transport.connection_url
+            == "ws://recovery.test"
+        )
+        assert (
+            components.recovery._scan_transport
+            is components.recovery_scan_transport
+        )
         assert components.recovery._pool_transport is components.transport
 
+        await components.recovery_scan_transport.close()
         await components.recovery_transport.close()
         await components.transport.close()
 

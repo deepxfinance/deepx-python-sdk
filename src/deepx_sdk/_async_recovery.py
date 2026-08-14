@@ -41,6 +41,7 @@ class RecoveryConfig:
     # inclusion wait timeout: slow-but-successful inclusions (degraded
     # the dev deployment has shown 30-50s) must not be falsely flagged.
     stale_ms: int = 60_000
+    scan_concurrency: int = 8
 
 
 class RecoveryTracker:
@@ -50,14 +51,18 @@ class RecoveryTracker:
         tracker: TransactionTracker,
         encoder: ExtrinsicEncoder,
         *,
+        scan_transport: AsyncRpcTransport | None = None,
         pool_transport: AsyncRpcTransport | None = None,
         config: RecoveryConfig | None = None,
     ) -> None:
         self._transport = transport
+        self._scan_transport = scan_transport or transport
         self._tracker = tracker
         self._encoder = encoder
         self._pool_transport = pool_transport or transport
         self._config = config or RecoveryConfig()
+        if self._config.scan_concurrency < 1:
+            raise ValueError("Recovery scan_concurrency must be at least 1.")
         self._started = False
         self._closed = False
         self._recovery_lock = asyncio.Lock()
@@ -70,7 +75,9 @@ class RecoveryTracker:
         self._last_finalized_scan_number: int | None = None
         self._runtime_spec_version: int | None = None
         self._pending_best_number: int | None = None
+        self._pending_finalized_number: int | None = None
         self._scan_task: asyncio.Task[None] | None = None
+        self._finalized_scan_task: asyncio.Task[None] | None = None
         self._watchdog_task: asyncio.Task[None] | None = None
         self._last_head_at: float | None = None
         self._last_head_number: int | None = None
@@ -85,6 +92,11 @@ class RecoveryTracker:
             initial_ms=self._config.reconnect_initial_ms,
             max_ms=self._config.reconnect_max_ms,
         )
+        if self._scan_transport is not self._transport:
+            self._scan_transport.enable_reconnect(
+                initial_ms=self._config.reconnect_initial_ms,
+                max_ms=self._config.reconnect_max_ms,
+            )
         self._transport.add_connection_state_callback(
             self._handle_connection_state
         )
@@ -106,19 +118,28 @@ class RecoveryTracker:
         )
 
     async def _validate_chain_identity(self) -> None:
-        if self._pool_transport is self._transport:
-            return
-        recovery_genesis, submission_genesis = await asyncio.gather(
-            self._transport.request("chain_getBlockHash", [0]),
-            self._pool_transport.request("chain_getBlockHash", [0]),
-        )
-        if (
-            not isinstance(recovery_genesis, str)
-            or not isinstance(submission_genesis, str)
-            or recovery_genesis.lower() != submission_genesis.lower()
+        transports = []
+        for transport in (
+            self._transport,
+            self._scan_transport,
+            self._pool_transport,
         ):
+            if all(transport is not existing for existing in transports):
+                transports.append(transport)
+        if len(transports) == 1:
+            return
+        genesis_hashes = await asyncio.gather(
+            *(
+                transport.request("chain_getBlockHash", [0])
+                for transport in transports
+            )
+        )
+        if any(not isinstance(value, str) for value in genesis_hashes) or len(
+            {str(value).lower() for value in genesis_hashes}
+        ) != 1:
             raise RuntimeError(
-                "Submission and recovery RPC transports do not serve the same chain."
+                "Submission, recovery subscription, and recovery scan RPC "
+                "transports do not serve the same chain."
             )
 
     async def reconcile(
@@ -136,15 +157,24 @@ class RecoveryTracker:
         self._closed = True
         scan_task = self._scan_task
         self._scan_task = None
+        finalized_scan_task = self._finalized_scan_task
+        self._finalized_scan_task = None
         watchdog_task = self._watchdog_task
         self._watchdog_task = None
-        for task in (scan_task, watchdog_task):
+        background_tasks = (scan_task, finalized_scan_task, watchdog_task)
+        for task in background_tasks:
             if task is not None and not task.done():
                 task.cancel()
+        await asyncio.gather(
+            *(task for task in background_tasks if task is not None),
+            return_exceptions=True,
+        )
         self._transport.remove_connection_state_callback(
             self._handle_connection_state
         )
         self._transport.disable_reconnect()
+        if self._scan_transport is not self._transport:
+            self._scan_transport.disable_reconnect()
         subscriptions = self._subscriptions
         self._subscriptions = {}
         unsubscribe_methods = {
@@ -238,7 +268,7 @@ class RecoveryTracker:
                 self._last_best_hash = await self._block_hash(end)
                 return
             endpoint = getattr(
-                self._transport,
+                self._scan_transport,
                 "endpoint",
                 "<configured endpoint>",
             )
@@ -257,15 +287,22 @@ class RecoveryTracker:
             self._last_best_hash = await self._block_hash(end)
             return
 
-        for number in range(start, end + 1):
-            block_hash = await self._block_hash(number)
-            self._tracker.prepare_recovery_block(block_hash)
-            await self._tracker.resolve_block(
-                block_hash,
-                transport=self._transport,
+        for batch_start in range(start, end + 1, self._config.scan_concurrency):
+            numbers = list(
+                range(
+                    batch_start,
+                    min(end + 1, batch_start + self._config.scan_concurrency),
+                )
             )
-            self._last_best_number = number
-            self._last_best_hash = block_hash
+            results = await asyncio.gather(
+                *(self._resolve_block_number(number) for number in numbers),
+                return_exceptions=True,
+            )
+            for number, result in zip(numbers, results, strict=True):
+                if isinstance(result, BaseException):
+                    raise result
+                self._last_best_number = number
+                self._last_best_hash = result
 
     async def _scan_finalized_chain(self, finalized_number: int) -> None:
         previous = self._last_finalized_scan_number
@@ -282,7 +319,7 @@ class RecoveryTracker:
             return
 
         endpoint = str(
-            getattr(self._transport, "endpoint", "<configured endpoint>")
+            getattr(self._scan_transport, "endpoint", "<configured endpoint>")
         )
         if end - start + 1 > self._config.max_blocks:
             self._record_incomplete_finalized_scan(
@@ -294,25 +331,31 @@ class RecoveryTracker:
             )
             return
 
-        for number in range(start, end + 1):
-            try:
-                block_hash = await self._block_hash(number)
-                self._tracker.prepare_recovery_block(block_hash)
-                await self._tracker.resolve_block(
-                    block_hash,
-                    transport=self._transport,
+        for batch_start in range(start, end + 1, self._config.scan_concurrency):
+            numbers = list(
+                range(
+                    batch_start,
+                    min(end + 1, batch_start + self._config.scan_concurrency),
                 )
-            except Exception as exc:
-                self._record_incomplete_finalized_scan(
-                    start=number,
-                    end=end,
-                    finalized_head=finalized_number,
-                    endpoint=endpoint,
-                    reason_code="FINALIZED_SCAN_RPC_ERROR",
-                    cause=exc,
-                )
-                return
-            self._last_finalized_scan_number = number
+            )
+            results = await asyncio.gather(
+                *(self._resolve_block_number(number) for number in numbers),
+                return_exceptions=True,
+            )
+            for number, result in zip(numbers, results, strict=True):
+                if isinstance(result, asyncio.CancelledError):
+                    raise result
+                if isinstance(result, BaseException):
+                    self._record_incomplete_finalized_scan(
+                        start=number,
+                        end=end,
+                        finalized_head=finalized_number,
+                        endpoint=endpoint,
+                        reason_code="FINALIZED_SCAN_RPC_ERROR",
+                        cause=result,
+                    )
+                    return
+                self._last_finalized_scan_number = number
 
         self._record_complete_finalized_scan(
             start=start,
@@ -326,6 +369,15 @@ class RecoveryTracker:
             finalized_head=finalized_number,
             recovery_endpoint=endpoint,
         )
+
+    async def _resolve_block_number(self, number: int) -> str:
+        block_hash = await self._block_hash(number)
+        self._tracker.prepare_recovery_block(block_hash)
+        await self._tracker.resolve_block(
+            block_hash,
+            transport=self._scan_transport,
+        )
+        return block_hash
 
     def _record_complete_finalized_scan(
         self,
@@ -663,37 +715,77 @@ class RecoveryTracker:
         if number is None:
             return
         self._last_head_number = number
-        self._pending_best_number = number
+        self._pending_best_number = max(
+            self._pending_best_number or number,
+            number,
+        )
         if self._scan_task is None or self._scan_task.done():
-            self._scan_task = asyncio.create_task(self._drain_best_scans())
+            self._scan_task = asyncio.create_task(
+                self._drain_best_scans(),
+                name="deepx-recovery-best-scan",
+            )
 
     async def _drain_best_scans(self) -> None:
         # Coalesce bursts of heads into as few catch-up scans as possible:
         # re-check after each scan whether newer heads arrived in the meantime.
-        async with self._recovery_lock:
-            if self._closed:
-                return
-            while not self._closed:
-                target = self._pending_best_number
-                previous = self._last_best_number
-                if target is None or (previous is not None and target <= previous):
+        try:
+            async with self._recovery_lock:
+                if self._closed:
                     return
-                if previous is None:
-                    self._last_best_number = target
-                    self._last_best_hash = await self._block_hash(target)
-                else:
-                    await self._scan_best_chain(previous + 1, target)
+                while not self._closed:
+                    target = self._pending_best_number
+                    previous = self._last_best_number
+                    if target is None or (
+                        previous is not None and target <= previous
+                    ):
+                        return
+                    if previous is None:
+                        self._last_best_number = target
+                        self._last_best_hash = await self._block_hash(target)
+                    else:
+                        await self._scan_best_chain(previous + 1, target)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("Recovery best-head scan failed")
 
     async def _handle_finalized_head(self, update: object) -> None:
+        # Finalized heads can arrive as quickly as best heads. Keep this
+        # subscription callback O(1); scanning belongs to the coalescing task.
         number = _head_number(update)
         if number is None:
             return
-        async with self._recovery_lock:
-            block_hash = await self._block_hash(number)
-            await self._scan_finalized_chain(number)
-            self._last_finalized_hash = block_hash
-            self._last_finalized_number = number
-            await self._reconcile_finalized(block_hash, number)
+        self._pending_finalized_number = max(
+            self._pending_finalized_number or number,
+            number,
+        )
+        if self._finalized_scan_task is None or self._finalized_scan_task.done():
+            self._finalized_scan_task = asyncio.create_task(
+                self._drain_finalized_scans(),
+                name="deepx-recovery-finalized-scan",
+            )
+
+    async def _drain_finalized_scans(self) -> None:
+        try:
+            async with self._recovery_lock:
+                if self._closed:
+                    return
+                while not self._closed:
+                    target = self._pending_finalized_number
+                    previous = self._last_finalized_number
+                    if target is None or (
+                        previous is not None and target <= previous
+                    ):
+                        return
+                    block_hash = await self._block_hash(target)
+                    await self._scan_finalized_chain(target)
+                    self._last_finalized_hash = block_hash
+                    self._last_finalized_number = target
+                    await self._reconcile_finalized(block_hash, target)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("Recovery finalized-head scan failed")
 
     async def _reconcile_finalized(
         self,
@@ -701,7 +793,7 @@ class RecoveryTracker:
         finalized_number: int,
     ) -> None:
         endpoint = getattr(
-            self._transport,
+            self._scan_transport,
             "endpoint",
             "<configured endpoint>",
         )
@@ -711,7 +803,7 @@ class RecoveryTracker:
                 or pending.block_hash is None
             ):
                 continue
-            header = await self._transport.request(
+            header = await self._scan_transport.request(
                 "chain_getHeader",
                 [pending.block_hash],
             )
@@ -749,7 +841,7 @@ class RecoveryTracker:
 
     async def _read_best_head(self) -> tuple[str, int]:
         block_hash = await self._block_hash(None)
-        header = await self._transport.request(
+        header = await self._scan_transport.request(
             "chain_getHeader",
             [block_hash],
         )
@@ -759,13 +851,13 @@ class RecoveryTracker:
         return block_hash, number
 
     async def _read_finalized_head(self) -> tuple[str, int]:
-        block_hash = await self._transport.request(
+        block_hash = await self._scan_transport.request(
             "chain_getFinalizedHead",
             [],
         )
         if not isinstance(block_hash, str):
             raise RuntimeError("Finalized-head RPC returned no block hash.")
-        header = await self._transport.request(
+        header = await self._scan_transport.request(
             "chain_getHeader",
             [block_hash],
         )
@@ -776,7 +868,7 @@ class RecoveryTracker:
 
     async def _block_hash(self, number: int | None) -> str:
         params: list[object] = [] if number is None else [number]
-        block_hash = await self._transport.request(
+        block_hash = await self._scan_transport.request(
             "chain_getBlockHash",
             params,
         )
