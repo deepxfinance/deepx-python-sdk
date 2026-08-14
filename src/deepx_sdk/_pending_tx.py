@@ -42,6 +42,7 @@ class TxStatus(str, Enum):
     FINALIZED = "finalized"
     INVALID = "invalid"
     DROPPED = "dropped"
+    NOT_INCLUDED = "not_included"
     USURPED = "usurped"
     RETRACTED = "retracted"
     RECONCILIATION_REQUIRED = "reconciliation_required"
@@ -54,6 +55,7 @@ class ExecutionState(str, Enum):
     EXECUTED = "executed"
     FINALIZED = "finalized"
     FAILED = "failed"
+    NOT_INCLUDED = "not_included"
     ACTION_REQUIRED = "action_required"
 
 
@@ -82,6 +84,51 @@ class TxTimings:
     in_block_dispatch_ms: float | None = None
 
 
+@dataclass
+class RecoveryDiagnostics:
+    reason_code: str | None = None
+    scan_start: int | None = None
+    scan_end: int | None = None
+    finalized_head: int | None = None
+    scan_complete: bool | None = None
+    missing_ranges: list[tuple[int, int]] = field(default_factory=list)
+    submission_endpoint: str | None = None
+    recovery_endpoint: str | None = None
+    pending_pool_checked: bool = False
+    pending_pool_endpoint: str | None = None
+    pending_pool_result: str | None = None
+    matched_block: str | None = None
+    extrinsic_index: int | None = None
+    rpc_errors: list[dict[str, str]] = field(default_factory=list)
+
+    def add_rpc_error(self, *, method: str, error: BaseException) -> None:
+        self.rpc_errors.append(
+            {"method": method, "error_type": type(error).__name__}
+        )
+        del self.rpc_errors[:-8]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "reason_code": self.reason_code,
+            "scan_start": self.scan_start,
+            "scan_end": self.scan_end,
+            "finalized_head": self.finalized_head,
+            "scan_complete": self.scan_complete,
+            "missing_ranges": [
+                {"start": start, "end": end}
+                for start, end in self.missing_ranges
+            ],
+            "submission_endpoint": self.submission_endpoint,
+            "recovery_endpoint": self.recovery_endpoint,
+            "pending_pool_checked": self.pending_pool_checked,
+            "pending_pool_endpoint": self.pending_pool_endpoint,
+            "pending_pool_result": self.pending_pool_result,
+            "matched_block": self.matched_block,
+            "extrinsic_index": self.extrinsic_index,
+            "rpc_errors": [dict(item) for item in self.rpc_errors],
+        }
+
+
 @dataclass(frozen=True)
 class TxUpdate:
     status: TxStatus
@@ -108,6 +155,7 @@ class TransactionSnapshot:
     error: dict[str, Any] | None
     timestamps: dict[str, str | None]
     timings: dict[str, float | None]
+    recovery: dict[str, Any]
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -124,6 +172,7 @@ class TransactionSnapshot:
             "error": self.error,
             "timestamps": dict(self.timestamps),
             "timings": dict(self.timings),
+            "recovery": dict(self.recovery),
         }
 
 
@@ -151,6 +200,7 @@ _LEGAL_TRANSITIONS: dict[TxStatus, frozenset[TxStatus]] = {
             TxStatus.IN_BLOCK_FAILED,
             TxStatus.INVALID,
             TxStatus.DROPPED,
+            TxStatus.NOT_INCLUDED,
             TxStatus.USURPED,
             TxStatus.CLIENT_CLOSED,
             TxStatus.RECONCILIATION_REQUIRED,
@@ -171,6 +221,7 @@ _LEGAL_TRANSITIONS: dict[TxStatus, frozenset[TxStatus]] = {
             TxStatus.IN_BLOCK_FAILED,
             TxStatus.INVALID,
             TxStatus.DROPPED,
+            TxStatus.NOT_INCLUDED,
             TxStatus.USURPED,
             TxStatus.CLIENT_CLOSED,
             TxStatus.RECONCILIATION_REQUIRED,
@@ -180,6 +231,7 @@ _LEGAL_TRANSITIONS: dict[TxStatus, frozenset[TxStatus]] = {
     TxStatus.FINALIZED: frozenset(),
     TxStatus.INVALID: frozenset(),
     TxStatus.DROPPED: frozenset(),
+    TxStatus.NOT_INCLUDED: frozenset(),
     TxStatus.USURPED: frozenset(),
     TxStatus.RECONCILIATION_REQUIRED: frozenset(),
     TxStatus.CLIENT_CLOSED: frozenset(),
@@ -191,6 +243,7 @@ _TERMINAL_STATUSES = frozenset(
         TxStatus.FINALIZED,
         TxStatus.INVALID,
         TxStatus.DROPPED,
+        TxStatus.NOT_INCLUDED,
         TxStatus.USURPED,
         TxStatus.RECONCILIATION_REQUIRED,
         TxStatus.CLIENT_CLOSED,
@@ -216,6 +269,7 @@ class PendingTransaction(Generic[ResultT]):
         self.timeouts = timeouts or TxTimeouts()
         self.status = TxStatus.CREATED
         self.timings = TxTimings()
+        self.recovery = RecoveryDiagnostics()
         self.block_hash: str | None = None
         self.extrinsic_hash: str | None = None
         self.node_status: str | None = None
@@ -246,6 +300,8 @@ class PendingTransaction(Generic[ResultT]):
             TxStatus.USURPED,
         }:
             return ExecutionState.FAILED
+        if self.status is TxStatus.NOT_INCLUDED:
+            return ExecutionState.NOT_INCLUDED
         return ExecutionState.ACTION_REQUIRED
 
     @property
@@ -316,6 +372,9 @@ class PendingTransaction(Generic[ResultT]):
 
     def mark_dropped(self, error: TransactionError) -> None:
         self._finish_with_error(TxStatus.DROPPED, error)
+
+    def mark_not_included(self, error: TransactionError) -> None:
+        self._finish_with_error(TxStatus.NOT_INCLUDED, error)
 
     def mark_usurped(self, error: TransactionError) -> None:
         self._finish_with_error(TxStatus.USURPED, error)
@@ -430,6 +489,7 @@ class PendingTransaction(Generic[ResultT]):
             "block_hash": self.block_hash,
             "extrinsic_hash": self.extrinsic_hash,
             "error": self.error.to_dict() if self.error is not None else None,
+            "recovery": self.recovery.to_dict(),
         }
 
     def snapshot(self) -> TransactionSnapshot:
@@ -463,6 +523,7 @@ class PendingTransaction(Generic[ResultT]):
                 "finalization_ms": self.timings.finalization_ms,
                 "in_block_dispatch_ms": self.timings.in_block_dispatch_ms,
             },
+            recovery=self.recovery.to_dict(),
         )
 
     def _transition(
@@ -682,4 +743,11 @@ class PendingTransaction(Generic[ResultT]):
         return value.isoformat() if value is not None else None
 
 
-__all__ = ["PendingTransaction", "TxStatus", "TxTimings", "TxTimeouts", "TxUpdate"]
+__all__ = [
+    "PendingTransaction",
+    "RecoveryDiagnostics",
+    "TxStatus",
+    "TxTimings",
+    "TxTimeouts",
+    "TxUpdate",
+]

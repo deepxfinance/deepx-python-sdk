@@ -232,6 +232,7 @@ def test_sync_client_forwards_pool_limit_settings(
             "ws://node.test",
             "ws://backup.test",
         ],
+        recovery_substrate_ws_endpoints=["ws://recovery.test"],
         private_key="0x" + "11" * 32,
         subaccount="0x" + "22" * 20,
         node_pool_limit_per_account=10,
@@ -253,6 +254,9 @@ def test_sync_client_forwards_pool_limit_settings(
         assert async_client.substrate_ws_endpoints == (
             "ws://node.test",
             "ws://backup.test",
+        )
+        assert async_client.recovery_substrate_ws_endpoints == (
+            "ws://recovery.test",
         )
         assert client.active_rpc_endpoint == "ws://node.test"
 

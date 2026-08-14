@@ -244,7 +244,7 @@ def test_perp_order_wrappers_forward_cloid(monkeypatch) -> None:
         "is_long": True,
         "size": 100,
     }
-    cloid = 2**31 - 1
+    cloid = 2**31
 
     _perp_market.place_perp_order_limit(**base, price=1000, cloid=cloid)
     assert captured["submit"]["call_params"]["params"]["cloid"] == cloid
@@ -253,8 +253,8 @@ def test_perp_order_wrappers_forward_cloid(monkeypatch) -> None:
     _perp_market.place_perp_order_ioc(**base, price=1000, cloid=cloid + 1)
     assert captured["submit"]["call_params"]["params"]["cloid"] == cloid + 1
 
-    _perp_market.place_perp_order_market(**base, slippage=50, cloid=cloid + 2)
-    assert captured["submit"]["call_params"]["params"]["cloid"] == cloid + 2
+    _perp_market.place_perp_order_market(**base, slippage=50, cloid=2**32 - 1)
+    assert captured["submit"]["call_params"]["params"]["cloid"] == 2**32 - 1
     assert captured["submit"]["call_params"]["params"]["order_type"] == {"Market": 50}
 
 
@@ -511,7 +511,7 @@ def test_perp_modify_order_builds_cancel_place_ops(monkeypatch) -> None:
         is_long=True,
         price=1_800_000_000,
         size=10**15,
-        cloid=2**31 - 1,
+        cloid=2**32 - 1,
         nonce_ms=1781757000123,
     )
 
@@ -545,7 +545,7 @@ def test_perp_modify_order_builds_cancel_place_ops(monkeypatch) -> None:
                     "stop_loss": None,
                     "reduce_only": False,
                     "post_only": "None",
-                    "cloid": 2**31 - 1,
+                    "cloid": 2**32 - 1,
                 }
             }
         },
@@ -632,7 +632,7 @@ def test_spot_modify_order_builds_cancel_place_ops(monkeypatch) -> None:
         is_buy=True,
         quote_amount=1_500_000,
         base_amount=10**15,
-        cloid=2**31 - 1,
+        cloid=2**31,
     )
 
     assert result.order_id == 888
@@ -663,7 +663,7 @@ def test_spot_modify_order_builds_cancel_place_ops(monkeypatch) -> None:
                     "order_type": {"Limit": "GTC"},
                     "post_only": "None",
                     "reduce_only": False,
-                    "cloid": 2**31 - 1,
+                    "cloid": 2**31,
                 }
             }
         },
@@ -981,7 +981,7 @@ def test_spot_order_actions_ioc_uses_pallet_calls(monkeypatch) -> None:
         pair=pair,
         quote_amount=2000,
         base_amount=20,
-        cloid=2**31 - 1,
+        cloid=2**31,
     )
     assert result_sell.order_id == 123
     assert captured["submit"]["call_function"] == "place_order"
@@ -989,7 +989,7 @@ def test_spot_order_actions_ioc_uses_pallet_calls(monkeypatch) -> None:
     assert captured["submit"]["call_params"]["params"]["is_buy"] is False
     assert captured["submit"]["call_params"]["params"]["post_only"] == "None"
     assert captured["submit"]["call_params"]["params"]["reduce_only"] is False
-    assert captured["submit"]["call_params"]["params"]["cloid"] == 2**31 - 1
+    assert captured["submit"]["call_params"]["params"]["cloid"] == 2**31
     assert captured["submit"]["event"] == "StateOrderSell"
 
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from types import SimpleNamespace
 from typing import Any
 
@@ -58,10 +59,19 @@ class _RecoveryTransport:
     def __init__(self, *, best_number: int = 10, finalized_number: int = 9) -> None:
         self.best_number = best_number
         self.finalized_number = finalized_number
+        self.genesis_hash = "0xblock-0"
         self.connect_attempts = 1
         self.submission_count = 0
         self.block_fetch_count = 0
+        self.storage_fetch_count = 0
         self.blocks: dict[int, list[str]] = {}
+        self.pending_extrinsics: list[str] = []
+        self.pending_error: BaseException | None = None
+        self.block_fetch_delay_s = 0.0
+        self.block_fetch_gate: asyncio.Event | None = None
+        self.active_block_fetches = 0
+        self.max_active_block_fetches = 0
+        self.request_methods: list[str] = []
         self._connection_callbacks: list[Any] = []
         self._subscription_handlers: dict[str, Any] = {}
         self._reconnect_enabled = False
@@ -114,8 +124,11 @@ class _RecoveryTransport:
                 await result
 
     async def request(self, method: str, params: list[object]) -> object:
+        self.request_methods.append(method)
         if method == "chain_getBlockHash":
             number = self.best_number if not params else int(params[0])
+            if number == 0:
+                return self.genesis_hash
             return f"0xblock-{number}"
         if method == "chain_getHeader":
             block_hash = str(params[0])
@@ -124,10 +137,27 @@ class _RecoveryTransport:
             return f"0xblock-{self.finalized_number}"
         if method == "chain_getBlock":
             self.block_fetch_count += 1
-            number = int(str(params[0]).rsplit("-", 1)[1])
-            return {"block": {"extrinsics": self.blocks.get(number, [])}}
+            self.active_block_fetches += 1
+            self.max_active_block_fetches = max(
+                self.max_active_block_fetches,
+                self.active_block_fetches,
+            )
+            try:
+                if self.block_fetch_gate is not None:
+                    await self.block_fetch_gate.wait()
+                if self.block_fetch_delay_s:
+                    await asyncio.sleep(self.block_fetch_delay_s)
+                number = int(str(params[0]).rsplit("-", 1)[1])
+                return {"block": {"extrinsics": self.blocks.get(number, [])}}
+            finally:
+                self.active_block_fetches -= 1
         if method == "state_getStorage":
+            self.storage_fetch_count += 1
             return "0xevents"
+        if method == "author_pendingExtrinsics":
+            if self.pending_error is not None:
+                raise self.pending_error
+            return list(self.pending_extrinsics)
         raise AssertionError(f"unexpected RPC method: {method}")
 
 
@@ -177,7 +207,8 @@ def test_reconnect_recovers_original_pending_handle() -> None:
         assert recovered is pending
         assert await pending.wait_in_block() == 77
         assert transport.connect_attempts == 2
-        assert tracker.block_fetch_count == 3
+        assert tracker.block_fetch_count == 4
+        assert transport.storage_fetch_count == 1
         assert transport.submission_count == 1
         await recovery.close()
 
@@ -219,16 +250,38 @@ class _ReconnectSocket:
         self.close_calls += 1
 
 
+class _RpcReconnectSocket(_ReconnectSocket):
+    def __init__(self) -> None:
+        super().__init__()
+        self.responses: asyncio.Queue[str] = asyncio.Queue()
+
+    async def send(self, message: str) -> None:
+        request = json.loads(message)
+        await self.responses.put(
+            json.dumps(
+                {
+                    "jsonrpc": "2.0",
+                    "id": request["id"],
+                    "result": "0xgenesis",
+                }
+            )
+        )
+
+    async def recv(self) -> str:
+        return await self.responses.get()
+
+
 def test_transport_reconnect_is_singleton_capped_and_callback_safe() -> None:
     async def run() -> None:
         first = _ReconnectSocket()
-        replacement = _ReconnectSocket()
+        replacement = _RpcReconnectSocket()
         attempts = 0
         delays: list[float] = []
         first_sleep_entered = asyncio.Event()
         release_first_sleep = asyncio.Event()
         connected = asyncio.Event()
         states: list[ConnectionState] = []
+        recovery_rpc_results: list[object] = []
 
         async def connect_factory(_url: str, **_kwargs: object) -> _ReconnectSocket:
             nonlocal attempts
@@ -254,6 +307,12 @@ def test_transport_reconnect_is_singleton_capped_and_callback_safe() -> None:
             if state is ConnectionState.CONNECTED and attempts > 1:
                 connected.set()
 
+        async def recover(state: ConnectionState) -> None:
+            if state is ConnectionState.RECOVERING:
+                recovery_rpc_results.append(
+                    await transport.request("chain_getBlockHash", [0])
+                )
+
         transport = AsyncRpcTransport(
             "ws://node.test",
             connect_factory=connect_factory,
@@ -262,6 +321,7 @@ def test_transport_reconnect_is_singleton_capped_and_callback_safe() -> None:
             reconnect_sleep=sleep,
         )
         transport.add_connection_state_callback(broken_callback)
+        transport.add_connection_state_callback(recover)
         transport.add_connection_state_callback(record)
         await transport.connect()
 
@@ -286,6 +346,7 @@ def test_transport_reconnect_is_singleton_capped_and_callback_safe() -> None:
             ConnectionState.CONNECTED,
         ]
         assert transport._reader_task is not None
+        assert recovery_rpc_results == ["0xgenesis"]
         await transport.close()
 
     asyncio.run(run())
@@ -380,7 +441,11 @@ class _BoundaryTracker:
     def prepare_recovery_block(self, _block_hash: str) -> None:
         return None
 
-    async def resolve_block(self, block_hash: str) -> None:
+    async def resolve_block(
+        self,
+        block_hash: str,
+        **_options: object,
+    ) -> None:
         self.resolved.append(block_hash)
 
     def mark_reconciliation_required(
@@ -390,6 +455,7 @@ class _BoundaryTracker:
         missing_start: int,
         missing_end: int,
         endpoint: str,
+        **_diagnostics: object,
     ) -> None:
         error = ReconciliationRequired(
             code="RECONCILIATION_REQUIRED",
@@ -617,7 +683,7 @@ async def _wait_until(predicate: Any, timeout_s: float = 2.0) -> None:
         await asyncio.sleep(0.005)
 
 
-def test_watchdog_scans_and_flags_stale_when_heads_silent() -> None:
+def test_watchdog_scans_but_does_not_classify_before_finality() -> None:
     async def run() -> None:
         transport = _RecoveryTransport()
         encoder = _RecoveryEncoder()
@@ -641,11 +707,11 @@ def test_watchdog_scans_and_flags_stale_when_heads_silent() -> None:
         # The chain advances but no head notifications arrive (the heads
         # subscription is dead): the watchdog must scan AND re-subscribe.
         transport.best_number = 12
-        await _wait_until(lambda: pending.status is TxStatus.RECONCILIATION_REQUIRED)
         await _wait_until(
             lambda: subscribe_calls.count("chain_subscribeNewHeads") == 2
         )
         assert transport.block_fetch_count >= 2  # walked blocks 11 and 12
+        assert pending.status is TxStatus.SUBMITTED
         await recovery.close()
 
     asyncio.run(run())
@@ -683,7 +749,7 @@ def test_watchdog_leaves_stalled_chain_alone() -> None:
     asyncio.run(run())
 
 
-def test_head_driven_scan_flags_stale_pending() -> None:
+def test_head_driven_scan_does_not_classify_before_finality() -> None:
     async def run() -> None:
         transport = _RecoveryTransport()
         encoder = _RecoveryEncoder()
@@ -697,11 +763,419 @@ def test_head_driven_scan_flags_stale_pending() -> None:
         )
         await recovery.start()
 
-        # Healthy head flow: the tx is not in block 11, and with a zero stale
-        # horizon it must be flagged right after the covering scan completes.
+        # Best-chain absence is not terminal evidence: only finalized canonical
+        # coverage plus the submission-node pool check may classify it.
         transport.best_number = 11
         await transport.notify("chain_subscribeNewHeads", {"number": hex(11)})
-        await _wait_until(lambda: pending.status is TxStatus.RECONCILIATION_REQUIRED)
+        await _wait_until(lambda: transport.block_fetch_count >= 1)
+        assert pending.status is TxStatus.SUBMITTED
+        await recovery.close()
+
+    asyncio.run(run())
+
+
+def test_finalized_heads_coalesce_while_bounded_scan_is_slow() -> None:
+    async def run() -> None:
+        transport = _RecoveryTransport()
+        encoder = _RecoveryEncoder()
+        tracker = TransactionTracker(transport, encoder)  # type: ignore[arg-type]
+        pending = await _submitted(tracker, transport)
+        recovery = RecoveryTracker(
+            transport,
+            tracker,
+            encoder,  # type: ignore[arg-type]
+            config=_watchdog_config(
+                watchdog_interval_s=3600.0,
+                stale_ms=60_000,
+                scan_concurrency=4,
+            ),
+        )
+        await recovery.start()
+
+        gate = asyncio.Event()
+        transport.block_fetch_gate = gate
+        transport.finalized_number = 30
+
+        await asyncio.wait_for(
+            transport.notify(
+                "chain_subscribeFinalizedHeads",
+                {"number": hex(11)},
+            ),
+            timeout=0.1,
+        )
+        await _wait_until(lambda: transport.active_block_fetches > 0)
+        await asyncio.wait_for(
+            asyncio.gather(
+                *(
+                    transport.notify(
+                        "chain_subscribeFinalizedHeads",
+                        {"number": hex(number)},
+                    )
+                    for number in range(12, 31)
+                )
+            ),
+            timeout=0.1,
+        )
+
+        gate.set()
+        await _wait_until(lambda: recovery._last_finalized_number == 30)
+
+        assert pending.status is TxStatus.SUBMITTED
+        assert 1 < transport.max_active_block_fetches <= 4
+        await recovery.close()
+
+    asyncio.run(run())
+
+
+def test_best_scan_transport_failure_is_consumed(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    async def run() -> None:
+        transport = _RecoveryTransport()
+        encoder = _RecoveryEncoder()
+        tracker = TransactionTracker(transport, encoder)  # type: ignore[arg-type]
+        await _submitted(tracker, transport)
+        recovery = RecoveryTracker(
+            transport,
+            tracker,
+            encoder,  # type: ignore[arg-type]
+            config=_watchdog_config(watchdog_interval_s=3600.0),
+        )
+        await recovery.start()
+
+        async def fail(_number: int) -> str:
+            raise TransportRequestError(
+                "scan transport disconnected",
+                may_have_been_sent=False,
+            )
+
+        recovery._resolve_block_number = fail  # type: ignore[method-assign]
+        transport.best_number = 11
+        await transport.notify("chain_subscribeNewHeads", {"number": hex(11)})
+        await _wait_until(
+            lambda: recovery._scan_task is not None and recovery._scan_task.done()
+        )
+
+        assert recovery._scan_task is not None
+        assert recovery._scan_task.exception() is None
+        await recovery.close()
+
+    caplog.set_level("ERROR")
+    asyncio.run(run())
+    assert "Recovery best-head scan failed" in caplog.text
+
+
+def test_complete_finalized_scan_and_absent_pool_marks_not_included() -> None:
+    async def run() -> None:
+        transport = _RecoveryTransport()
+        encoder = _RecoveryEncoder()
+        tracker = TransactionTracker(transport, encoder)  # type: ignore[arg-type]
+        pending = await _submitted(tracker, transport)
+        recovery = RecoveryTracker(
+            transport,
+            tracker,
+            encoder,  # type: ignore[arg-type]
+            config=_watchdog_config(watchdog_interval_s=3600.0),
+        )
+        await recovery.start()
+
+        transport.best_number = 11
+        transport.finalized_number = 11
+        await transport.notify(
+            "chain_subscribeFinalizedHeads",
+            {"number": hex(11)},
+        )
+
+        await _wait_until(lambda: pending.status is TxStatus.NOT_INCLUDED)
+        assert pending.status is TxStatus.NOT_INCLUDED
+        assert pending.execution_state.value == "not_included"
+        assert transport.storage_fetch_count == 0
+        assert pending.recovery.to_dict() == {
+            "reason_code": "NOT_INCLUDED_FINALIZED",
+            "scan_start": 10,
+            "scan_end": 11,
+            "finalized_head": 11,
+            "scan_complete": True,
+            "missing_ranges": [],
+            "submission_endpoint": "ws://archive.node.test",
+            "recovery_endpoint": "ws://archive.node.test",
+            "pending_pool_checked": True,
+            "pending_pool_endpoint": "ws://archive.node.test",
+            "pending_pool_result": "absent",
+            "matched_block": None,
+            "extrinsic_index": None,
+            "rpc_errors": [],
+        }
+        await recovery.close()
+
+    asyncio.run(run())
+
+
+def test_unfinalized_best_block_is_checked_before_not_included() -> None:
+    async def run() -> None:
+        transport = _RecoveryTransport()
+        encoder = _RecoveryEncoder()
+        tracker = TransactionTracker(transport, encoder)  # type: ignore[arg-type]
+        pending = await _submitted(tracker, transport)
+        recovery = RecoveryTracker(
+            transport,
+            tracker,
+            encoder,  # type: ignore[arg-type]
+            config=_watchdog_config(watchdog_interval_s=3600.0),
+        )
+        await recovery.start()
+
+        transport.best_number = 11
+        transport.finalized_number = 10
+        transport.blocks[11] = ["0x0102"]
+        await transport.notify(
+            "chain_subscribeFinalizedHeads",
+            {"number": hex(10)},
+        )
+
+        await _wait_until(lambda: pending.status is TxStatus.IN_BLOCK_SUCCESS)
+        assert pending.status is TxStatus.IN_BLOCK_SUCCESS
+        assert await pending.wait_in_block() == 77
+        assert transport.storage_fetch_count == 1
+        assert "author_pendingExtrinsics" not in transport.request_methods
+        await recovery.close()
+
+    asyncio.run(run())
+
+
+def test_recovery_block_reads_use_dedicated_transport() -> None:
+    async def run() -> None:
+        submission_transport = _RecoveryTransport()
+        subscription_transport = _RecoveryTransport()
+        scan_transport = _RecoveryTransport()
+        encoder = _RecoveryEncoder()
+        tracker = TransactionTracker(
+            submission_transport,
+            encoder,
+        )  # type: ignore[arg-type]
+        pending = await _submitted(tracker, submission_transport)
+        recovery = RecoveryTracker(
+            subscription_transport,  # type: ignore[arg-type]
+            tracker,
+            encoder,  # type: ignore[arg-type]
+            scan_transport=scan_transport,  # type: ignore[arg-type]
+            pool_transport=submission_transport,  # type: ignore[arg-type]
+            config=_watchdog_config(watchdog_interval_s=3600.0),
+        )
+        await recovery.start()
+
+        scan_transport.finalized_number = 11
+        await subscription_transport.notify(
+            "chain_subscribeFinalizedHeads",
+            {"number": hex(11)},
+        )
+
+        await _wait_until(lambda: pending.status is TxStatus.NOT_INCLUDED)
+        assert pending.status is TxStatus.NOT_INCLUDED
+        assert scan_transport.block_fetch_count == 2
+        assert subscription_transport.block_fetch_count == 0
+        assert submission_transport.block_fetch_count == 0
+        assert "author_pendingExtrinsics" in submission_transport.request_methods
+        assert "author_pendingExtrinsics" not in scan_transport.request_methods
+        await recovery.close()
+
+    asyncio.run(run())
+
+
+def test_recovery_rejects_transport_serving_a_different_chain() -> None:
+    async def run() -> None:
+        submission_transport = _RecoveryTransport()
+        recovery_transport = _RecoveryTransport()
+        recovery_transport.genesis_hash = "0xdifferent-genesis"
+        recovery = RecoveryTracker(
+            recovery_transport,  # type: ignore[arg-type]
+            _BoundaryTracker(
+                PendingTransaction(tx_hash="0xunused", nonce=1, cloid=None)
+            ),  # type: ignore[arg-type]
+            _RecoveryEncoder(),  # type: ignore[arg-type]
+            pool_transport=submission_transport,  # type: ignore[arg-type]
+        )
+
+        with pytest.raises(RuntimeError, match="do not serve the same chain"):
+            await recovery.start()
+        await recovery.close()
+
+    asyncio.run(run())
+
+
+def test_complete_finalized_scan_keeps_transaction_still_in_pool() -> None:
+    async def run() -> None:
+        transport = _RecoveryTransport()
+        transport.pending_extrinsics = ["0x0102"]
+        encoder = _RecoveryEncoder()
+        tracker = TransactionTracker(transport, encoder)  # type: ignore[arg-type]
+        pending = await _submitted(tracker, transport)
+        recovery = RecoveryTracker(
+            transport,
+            tracker,
+            encoder,  # type: ignore[arg-type]
+            config=_watchdog_config(watchdog_interval_s=3600.0),
+        )
+        await recovery.start()
+
+        transport.finalized_number = 11
+        await transport.notify(
+            "chain_subscribeFinalizedHeads",
+            {"number": hex(11)},
+        )
+
+        await _wait_until(
+            lambda: pending.recovery.reason_code == "PENDING_IN_POOL"
+        )
+        assert pending.status is TxStatus.SUBMITTED
+        assert pending.recovery.reason_code == "PENDING_IN_POOL"
+        assert pending.recovery.pending_pool_result == "present"
+        await recovery.close()
+
+    asyncio.run(run())
+
+
+def test_finalized_diagnostics_accumulate_from_first_covered_height() -> None:
+    async def run() -> None:
+        transport = _RecoveryTransport()
+        encoder = _RecoveryEncoder()
+        tracker = TransactionTracker(transport, encoder)  # type: ignore[arg-type]
+        pending = await _submitted(tracker, transport)
+        recovery = RecoveryTracker(
+            transport,
+            tracker,
+            encoder,  # type: ignore[arg-type]
+            config=_watchdog_config(
+                watchdog_interval_s=3600.0,
+                stale_ms=60_000,
+            ),
+        )
+        await recovery.start()
+
+        transport.finalized_number = 10
+        await transport.notify(
+            "chain_subscribeFinalizedHeads",
+            {"number": hex(10)},
+        )
+        await _wait_until(lambda: pending.recovery.scan_end == 10)
+        assert pending.recovery.scan_start == 10
+        assert pending.recovery.scan_end == 10
+        assert pending.recovery.pending_pool_checked is False
+
+        pending._created_monotonic -= 61
+        transport.finalized_number = 11
+        await transport.notify(
+            "chain_subscribeFinalizedHeads",
+            {"number": hex(11)},
+        )
+        await _wait_until(lambda: pending.status is TxStatus.NOT_INCLUDED)
+        assert pending.status is TxStatus.NOT_INCLUDED
+        assert pending.recovery.scan_start == 10
+        assert pending.recovery.scan_end == 11
+        await recovery.close()
+
+    asyncio.run(run())
+
+
+def test_pool_endpoint_mismatch_remains_action_required() -> None:
+    async def run() -> None:
+        transport = _RecoveryTransport()
+        encoder = _RecoveryEncoder()
+        tracker = TransactionTracker(transport, encoder)  # type: ignore[arg-type]
+        pending = await _submitted(tracker, transport)
+        pending.recovery.submission_endpoint = "ws://different-submission.test"
+        recovery = RecoveryTracker(
+            transport,
+            tracker,
+            encoder,  # type: ignore[arg-type]
+            config=_watchdog_config(watchdog_interval_s=3600.0),
+        )
+        await recovery.start()
+
+        transport.finalized_number = 10
+        await transport.notify(
+            "chain_subscribeFinalizedHeads",
+            {"number": hex(10)},
+        )
+
+        await _wait_until(
+            lambda: pending.status is TxStatus.RECONCILIATION_REQUIRED
+        )
+        assert pending.status is TxStatus.RECONCILIATION_REQUIRED
+        assert pending.recovery.reason_code == "PENDING_POOL_SOURCE_MISMATCH"
+        assert pending.recovery.pending_pool_result == "source_mismatch"
+        await recovery.close()
+
+    asyncio.run(run())
+
+
+def test_pool_query_failure_after_complete_scan_requires_action() -> None:
+    async def run() -> None:
+        transport = _RecoveryTransport()
+        transport.pending_error = TimeoutError("pool timeout")
+        encoder = _RecoveryEncoder()
+        tracker = TransactionTracker(transport, encoder)  # type: ignore[arg-type]
+        pending = await _submitted(tracker, transport)
+        recovery = RecoveryTracker(
+            transport,
+            tracker,
+            encoder,  # type: ignore[arg-type]
+            config=_watchdog_config(watchdog_interval_s=3600.0),
+        )
+        await recovery.start()
+
+        transport.finalized_number = 11
+        await transport.notify(
+            "chain_subscribeFinalizedHeads",
+            {"number": hex(11)},
+        )
+
+        await _wait_until(
+            lambda: pending.status is TxStatus.RECONCILIATION_REQUIRED
+        )
+        assert pending.status is TxStatus.RECONCILIATION_REQUIRED
+        assert pending.recovery.reason_code == "PENDING_POOL_UNAVAILABLE"
+        assert pending.recovery.scan_complete is True
+        assert pending.recovery.missing_ranges == []
+        assert pending.recovery.rpc_errors == [
+            {
+                "method": "author_pendingExtrinsics",
+                "error_type": "TimeoutError",
+            }
+        ]
+        await recovery.close()
+
+    asyncio.run(run())
+
+
+def test_incomplete_finalized_range_requires_action_with_missing_range() -> None:
+    async def run() -> None:
+        transport = _RecoveryTransport()
+        encoder = _RecoveryEncoder()
+        tracker = TransactionTracker(transport, encoder)  # type: ignore[arg-type]
+        pending = await _submitted(tracker, transport)
+        recovery = RecoveryTracker(
+            transport,
+            tracker,
+            encoder,  # type: ignore[arg-type]
+            config=_watchdog_config(
+                watchdog_interval_s=3600.0,
+                max_blocks=1,
+            ),
+        )
+        await recovery.start()
+
+        transport.finalized_number = 11
+        await transport.notify(
+            "chain_subscribeFinalizedHeads",
+            {"number": hex(11)},
+        )
+
+        assert pending.status is TxStatus.RECONCILIATION_REQUIRED
+        assert pending.recovery.reason_code == "FINALIZED_SCAN_GAP"
+        assert pending.recovery.scan_complete is False
+        assert pending.recovery.missing_ranges == [(10, 11)]
+        assert pending.recovery.pending_pool_checked is False
         await recovery.close()
 
     asyncio.run(run())

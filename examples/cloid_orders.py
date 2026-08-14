@@ -7,8 +7,8 @@ matters for market makers that need to cancel within milliseconds of placing.
 
 On-chain rules (both perp and spot):
 
-- valid range: ``[2**31 - 1, 2**32 - 2]`` (system oids stay below ``2**31 - 1``
-  and never collide with cloids)
+- system oid range: ``[0, 2**31 - 1]``
+- valid cloid range: ``[2**31, 2**32 - 1]`` (the two ranges never collide)
 - a cloid is consumed **forever** once used — even after the order fills or is
   cancelled. Reusing it is rejected:
     - perp ``22_76 PerpDuplicateClientOrderId`` / spot ``20_45 SpotDuplicateClientOrderId``
@@ -55,7 +55,7 @@ SPOT_BASE_AMOUNT = int(Decimal("0.001") * (10 ** 18))   # 0.001 ETH -> 1500 USDC
 
 # Locally allocated, monotonically increasing cloids. A production client
 # would persist its own counter; time-based derivation keeps runs unique.
-CLOID_BASE = 2**31 - 1 + (int(time.time()) % 1_000_000) * 8
+CLOID_BASE = 2**31 + (int(time.time()) % 1_000_000) * 8
 
 
 # ---------------------------------------------------------------------------
@@ -157,7 +157,7 @@ def show_out_of_range_cloid_error() -> None:
     try:
         chain.perp_market.place_perp_order_limit(
             market_id=PERP_MARKET_ID, is_long=True, size=PERP_SIZE,
-            price=PERP_PRICE, cloid=100,  # < 2**31 - 1: inside the system-oid region
+            price=PERP_PRICE, cloid=100,  # < 2**31: inside the system-oid region
         )
         print("  UNEXPECTED: out-of-range cloid accepted")
     except ChainError as e:

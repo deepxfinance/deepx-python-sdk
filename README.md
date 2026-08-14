@@ -109,6 +109,10 @@ client = dx.AsyncChainClient(
         "wss://rpc-b.example.com",
         "wss://rpc-c.example.com",
     ],
+    recovery_substrate_ws_endpoints=[
+        "wss://recovery-rpc-a.example.com",
+        "wss://recovery-rpc-b.example.com",
+    ],
     private_key=PRIVATE_KEY,
     subaccount=SUBACCOUNT,
 )
@@ -117,11 +121,11 @@ await client.connect()
 print(client.active_rpc_endpoint)
 ```
 
-After reconnecting, the client restores subscriptions, scans missed blocks, and reconciles tracked transactions. A request whose bytes may already have been sent is not blindly resubmitted. All configured endpoints must serve the same chain. Endpoint order is preserved and duplicates are removed.
+After reconnecting, the client restores subscriptions, scans missed blocks, and reconciles tracked transactions. The async client uses three WebSocket connections: one for submission/watch traffic, one for recovery head subscriptions, and one for recovery block scans. This prevents a slow catch-up scan from blocking either transaction updates or head notifications. By default all three use `substrate_ws_endpoints`; provide `recovery_substrate_ws_endpoints` to route both recovery connections to dedicated nodes. The SDK verifies that their genesis hashes match. Block scans use bounded concurrency (eight blocks by default). A request whose bytes may already have been sent is not blindly resubmitted. All configured endpoints must serve the same chain. Endpoint order is preserved and duplicates are removed.
 
 `ChainClient` accepts the same `substrate_ws_endpoints` option for both its transaction-ticket runtime and synchronous one-shot Substrate methods. A synchronous submission may switch endpoints only while establishing the connection. Once extrinsic submission starts, the SDK does not replay the transaction on another endpoint because the first result may be ambiguous.
 
-**Self-healing while connected.** Reconnect recovery is not the only safety net. A watchdog (default every 5s) also covers failures that do not involve a disconnect: if the chain keeps producing blocks but no head notification arrives for ~15s — the heads subscription was dropped by a queue overflow or evicted server-side during a chain stall — the client re-subscribes and catches up via RPC. And any transaction still unresolved 60s after submission, despite full block visibility (typically a timestamp-nonce tx the node silently dropped), is moved to `ACTION_REQUIRED`, which releases its pool slot and tells you to reconcile by `tx_hash` / `cloid`. Note the two horizons deliberately differ: a wait timeout (`executed()` / `finalized()`) never mutates the ticket, only the much longer stale horizon does — so slow-but-successful inclusions are not falsely flagged.
+**Self-healing while connected.** Reconnect recovery is not the only safety net. A watchdog (default every 5s) also covers failures that do not involve a disconnect: if the chain keeps producing blocks but no head notification arrives for ~15s — the heads subscription was dropped by a queue overflow or evicted server-side during a chain stall — the client re-subscribes and catches up via RPC. Recovery first compares extrinsic hashes from `chain_getBlock`; it reads and decodes block events only after a tracked hash matches. A transaction unresolved after 60s is classified as `NOT_INCLUDED` only when the canonical finalized range was scanned without gaps and `author_pendingExtrinsics` on the recorded submission endpoint confirms that the hash is absent. Incomplete scans, unavailable pool RPC, or inconsistent data sources move it to `ACTION_REQUIRED` instead. A wait timeout (`executed()` / `finalized()`) never mutates the ticket, so slow-but-successful inclusions are not falsely flagged.
 
 EVM JSON-RPC reads and transaction-preparation calls support an ordered HTTP endpoint list:
 
@@ -235,6 +239,7 @@ async def on_transaction(event: dx.TransactionEvent) -> None:
     # Forward this event to metrics, alerts, or your strategy state machine.
     if event.execution_state in {
         dx.ExecutionState.FAILED,
+        dx.ExecutionState.NOT_INCLUDED,
         dx.ExecutionState.ACTION_REQUIRED,
     }:
         print("transaction alert:", event.to_dict())
@@ -282,11 +287,14 @@ The manager exposes both business state and the exact Substrate-oriented raw sta
 | `EXECUTED`        | The transaction was included and executed successfully                                                |
 | `FINALIZED`       | The transaction reached chain finality                                                                |
 | `FAILED`          | The transaction definitively failed; inspect the structured error, failed stage, and suggested action |
+| `NOT_INCLUDED`    | The transaction was absent through the fully scanned finalized head and the observed submission-node pool |
 | `ACTION_REQUIRED` | The outcome is uncertain; reconcile it using `tx_hash` / `cloid`                                      |
 
-`ticket.snapshot()` returns the current immutable business view, while `client.transactions.snapshots()` returns the latest view of all transactions tracked by this client. Lookup is also available through `client.transactions.get(tx_hash)` and `client.transactions.get_by_cloid(cloid)`.
+`ticket.snapshot()` returns the current immutable business view, while `client.transactions.snapshots()` returns the latest view of all transactions tracked by this client. Lookup is also available through `client.transactions.get(tx_hash)` and `client.transactions.get_by_cloid(cloid)`. The snapshot's `recovery` object includes the reason code, scan range and completeness, finalized head, missing ranges, submission/recovery/pool endpoints, pool result, matched block/index, and bounded RPC error diagnostics.
 
 `SubmissionTimeout`, `InclusionTimeout`, and `FinalizationTimeout` identify the failed wait stage. A timeout does not prove that the transaction failed: when certainty is `UNKNOWN`, or the handle reaches `ACTION_REQUIRED`, reconcile the node/API state using `tx_hash` or `cloid` before retrying. Only treat `ticket.safe_to_retry` as permission to retry; never blindly resubmit an unknown outcome.
+
+For a perpetual order, the fastest business-level reconciliation lookup is `api.v1.account.perp_order_by_tx(tx_hash=...)` (`GET /v1/account/perp/orders/tx/{tx_hash}`). An indexer hit provides the order result; a miss is not proof of failure because indexing is eventually consistent. Combine a persistent miss with the finalized-scan and submission-node-pool evidence before deciding that the transaction was not included.
 
 `print_state` defaults to `False`. When enabled, the manager's background worker prints one structured, redacted JSON object per state transition, so printing does not run on the submission callback hot path. It is convenient for local debugging and operations, but it is not a persistent audit log. The manager, its indexes, and its snapshots exist only in the current process; a multi-process or restart-safe strategy must persist/reconcile its own order identity and outcome data.
 
@@ -449,12 +457,12 @@ Orders can also be placed through the REST API — it builds a signed extrinsic 
 
 The high-level `chain.perp_market.place_order(..., order_type="ioc")` dispatcher also routes to `place_perp_order_ioc`. Accepted aliases: `"ioc"`, `"I"`, `"IOC"`, `3`.
 
-All perp place methods accept an optional `cloid` (client order id, `int`) — and so do the `place_order` dispatcher and the REST `api.v1.chain_tx.place_perp_order*` methods. A cloid becomes the order's oid, so you can cancel immediately without waiting for the system oid. Valid range on-chain: `[2**31 - 1, 2**32 - 2]`; a cloid is consumed forever once used (even after fill/cancel) — reuse is rejected with `22_76 PerpDuplicateClientOrderId`, out-of-range with `22_75 PlacePerpExceedClientOrderId`.
+All perp place methods accept an optional `cloid` (client order id, `int`) — and so do the `place_order` dispatcher and the REST `api.v1.chain_tx.place_perp_order*` methods. A cloid becomes the order's oid, so you can cancel immediately without waiting for the system oid. System order ids use `[0, 2**31 - 1]`; valid cloids use `[2**31, 2**32 - 1]`. A cloid is consumed forever once used (even after fill/cancel) — reuse is rejected with `22_76 PerpDuplicateClientOrderId`, out-of-range with `22_75 PlacePerpExceedClientOrderId`.
 
 ```python
 res = chain.perp_market.place_perp_order_ioc(market_id=3, is_long=True, size=123,
-                                             price=456, cloid=2**31 - 1)
-assert res.order_id == 2**31 - 1
+                                             price=456, cloid=2**31)
+assert res.order_id == 2**31
 chain.perp_market.cancel_order(market_id=3, order_id=res.order_id)
 ```
 
@@ -472,7 +480,7 @@ print(res.order_id, res.tx_hash)
 ```python
 res = chain.perp_market.modify_order(
     order_id=old_oid, market_id=3, is_long=True,
-    price=1_400_000_000, size=10**15, cloid=2**31 - 1,
+    price=1_400_000_000, size=10**15, cloid=2**31,
 )
 print(res.canceled_order_id, "->", res.order_id)
 
@@ -816,7 +824,7 @@ event = dst.wait_bridge_in(recipient="0xRECIPIENT_ON_SEPOLIA",
 print(event["amount"], event["tx_hash"])
 ```
 
-Current deployments (default network — the DeepX production deployment):
+Current deployments (default network — the DeepX public testnet deployment):
 
 | Chain | Chain ID | Bridge |
 | ----- | -------- | ------ |

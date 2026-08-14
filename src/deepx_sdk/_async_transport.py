@@ -304,7 +304,10 @@ class AsyncRpcTransport:
         *,
         subscribe_intent: _SubscribeIntent | None = None,
     ) -> object:
-        if self._state is not ConnectionState.CONNECTED or self._socket is None:
+        if self._state not in {
+            ConnectionState.CONNECTED,
+            ConnectionState.RECOVERING,
+        } or self._socket is None:
             raise TransportRequestError(
                 f"Cannot call RPC method {method!r}: WebSocket transport is not connected.",
                 may_have_been_sent=False,
@@ -327,7 +330,10 @@ class AsyncRpcTransport:
 
         try:
             async with self._send_lock:
-                if future.done() or self._state is not ConnectionState.CONNECTED:
+                if future.done() or self._state not in {
+                    ConnectionState.CONNECTED,
+                    ConnectionState.RECOVERING,
+                }:
                     return await future
                 self._request_may_have_been_sent.add(request_id)
                 await source_socket.send(json.dumps(message))

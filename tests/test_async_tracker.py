@@ -9,7 +9,12 @@ import pytest
 from deepx_sdk._async_encoder import EncodedExtrinsic
 from deepx_sdk._async_tracker import ExpectedEvent, TransactionTracker
 from deepx_sdk._errors import ChainError, RPCError
-from deepx_sdk._pending_tx import PendingTransaction, TxStatus, TxTimeouts
+from deepx_sdk._pending_tx import (
+    ExecutionState,
+    PendingTransaction,
+    TxStatus,
+    TxTimeouts,
+)
 from deepx_sdk._tx_diagnostics import (
     InclusionTimeout,
     OutcomeCertainty,
@@ -739,8 +744,13 @@ def test_missing_expected_event_is_a_structured_decode_error() -> None:
         assert error.cause.args[0] == {
             "block_hash": "0xblock",
             "extrinsic_index": 2,
-            "expected_event": "PerpMarket.OrderPlaced",
+            "details": {"expected_event": "PerpMarket.OrderPlaced"},
         }
+        assert pending.status is TxStatus.RECONCILIATION_REQUIRED
+        assert pending.execution_state is ExecutionState.ACTION_REQUIRED
+        assert pending.recovery.reason_code == "EXPECTED_EVENT_MISSING"
+        assert pending.recovery.matched_block == "0xblock"
+        assert pending.recovery.extrinsic_index == 2
 
     asyncio.run(run())
 

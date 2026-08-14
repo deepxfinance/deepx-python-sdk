@@ -234,6 +234,7 @@ class ChainClient:
     max_pool_transactions_per_account: int = 48
     priority_pool_reserve: int = 2
     substrate_ws_endpoints: Sequence[str] | None = None
+    recovery_substrate_ws_endpoints: Sequence[str] | None = None
     evm_rpc_endpoints: Sequence[str] | None = None
     market: "MarketClient" = field(init=False, repr=False)
     perp_market: "PerpMarketClient" = field(init=False, repr=False)
@@ -300,6 +301,11 @@ class ChainClient:
             default=config.substrate_ws,
         )
         self.substrate_ws = self.substrate_ws_endpoints[0]
+        self.recovery_substrate_ws_endpoints = resolve_substrate_ws_endpoints(
+            "",
+            self.recovery_substrate_ws_endpoints,
+            default=self.substrate_ws,
+        )
         self._substrate_rpc_pool = RpcEndpointPool(
             tuple(self.substrate_ws_endpoints)
         )
