@@ -18,6 +18,7 @@ from deepx_sdk._tx_diagnostics import (
     ReplacementUnsupported,
     TransactionDropped,
     TransactionInvalid,
+    TransactionNotIncluded,
     TransactionUsurped,
     ReconciliationRequired,
     SubmissionTimeout,
@@ -931,6 +932,27 @@ def test_execution_state_maps_retracted_failure_and_action_required() -> None:
     )
     assert failed.execution_state is pending_module.ExecutionState.FAILED
 
+    not_included: PendingTransaction[int] = PendingTransaction(
+        tx_hash="0xnot-included",
+        nonce=205,
+        cloid=305,
+    )
+    not_included.mark_submitted(node_status="ready")
+    not_included.mark_not_included(
+        TransactionNotIncluded(
+            code="TRANSACTION_NOT_INCLUDED",
+            stage=TxStage.RECOVERY,
+            elapsed_ms=1,
+            certainty=OutcomeCertainty.NOT_INCLUDED,
+            retryable=False,
+            suggested_action="Check the indexer before rebuilding.",
+        )
+    )
+    assert (
+        not_included.execution_state
+        is pending_module.ExecutionState.NOT_INCLUDED
+    )
+
     uncertain: PendingTransaction[int] = PendingTransaction(
         tx_hash="0xaction-required",
         nonce=204,
@@ -990,3 +1012,4 @@ def test_transaction_snapshot_retry_and_replacement_are_conservative() -> None:
     assert rendered["safe_to_retry"] is True
     assert rendered["tx_hash"] == "0xretryable"
     assert rendered["error"]["code"] == "CLIENT_REJECTED_BEFORE_SEND"
+    assert rendered["recovery"]["scan_complete"] is None

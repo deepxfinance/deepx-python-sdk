@@ -94,6 +94,7 @@ class _SyncTicketRuntime:
         *,
         substrate_ws: str,
         substrate_ws_endpoints: tuple[str, ...],
+        recovery_substrate_ws_endpoints: tuple[str, ...],
         private_key: str,
         subaccount: str,
         net: str,
@@ -122,6 +123,9 @@ class _SyncTicketRuntime:
                 self._connect(
                     substrate_ws=substrate_ws,
                     substrate_ws_endpoints=substrate_ws_endpoints,
+                    recovery_substrate_ws_endpoints=(
+                        recovery_substrate_ws_endpoints
+                    ),
                     private_key=private_key,
                     subaccount=subaccount,
                     net=net,
@@ -144,6 +148,9 @@ class _SyncTicketRuntime:
         return cls(
             substrate_ws=client.substrate_ws,
             substrate_ws_endpoints=client._substrate_rpc_pool.ordered(),
+            recovery_substrate_ws_endpoints=(
+                client.recovery_substrate_ws_endpoints
+            ),
             private_key=client.private_key,
             subaccount=client.subaccount,
             net=client.net,

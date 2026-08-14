@@ -61,6 +61,7 @@ from .client import ChainClient
 from ._pending_tx import (
     ExecutionState,
     PendingTransaction,
+    RecoveryDiagnostics,
     TransactionSnapshot,
     TxStatus,
     TxTimings,
@@ -82,6 +83,7 @@ from ._tx_diagnostics import (
     TransactionDropped,
     TransactionError,
     TransactionInvalid,
+    TransactionNotIncluded,
     TransactionUsurped,
 )
 from .units import from_base_unit, from_quote_unit, to_base_unit, to_quote_unit
@@ -123,6 +125,7 @@ __all__ = [
     "PlaceOrderResult",
     "PositionUpdatedResult",
     "ReconciliationRequired",
+    "RecoveryDiagnostics",
     "RESTError",
     "ReplacementUnsupported",
     "RPCError",
@@ -145,6 +148,7 @@ __all__ = [
     "TransactionError",
     "TransactionEvent",
     "TransactionInvalid",
+    "TransactionNotIncluded",
     "TransactionManager",
     "TransactionSnapshot",
     "TransactionUsurped",

@@ -30,6 +30,7 @@ class OutcomeCertainty(str, Enum):
     REJECTED = "rejected"
     REPLACED = "replaced"
     EXECUTED_FAILED = "executed_failed"
+    NOT_INCLUDED = "not_included"
     INCLUDED = "included"
     FINALIZED = "finalized"
 
@@ -149,6 +150,8 @@ class TransactionError(TxError):
             outcome += "; the transaction was replaced"
         elif self.certainty is OutcomeCertainty.EXECUTED_FAILED:
             outcome += "; the transaction executed and failed"
+        elif self.certainty is OutcomeCertainty.NOT_INCLUDED:
+            outcome += "; the transaction was not included through the observed finalized head"
         elif self.certainty is OutcomeCertainty.INCLUDED:
             outcome += "; the transaction is included but not final"
         else:
@@ -272,6 +275,10 @@ class TransactionDropped(TransactionError):
     pass
 
 
+class TransactionNotIncluded(TransactionError):
+    pass
+
+
 class TransactionUsurped(TransactionError):
     pass
 
@@ -304,6 +311,7 @@ __all__ = [
     "TransactionDropped",
     "TransactionError",
     "TransactionInvalid",
+    "TransactionNotIncluded",
     "TransactionUsurped",
     "TxStage",
 ]

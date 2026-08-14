@@ -58,6 +58,7 @@ async def _transaction_listener(event: dx.TransactionEvent) -> None:
     """One listener receives events for every transaction on this client."""
     if event.execution_state in {
         dx.ExecutionState.FAILED,
+        dx.ExecutionState.NOT_INCLUDED,
         dx.ExecutionState.ACTION_REQUIRED,
     }:
         print(
@@ -138,11 +139,15 @@ async def main() -> None:
             isinstance(exc, dx.TransactionError)
             and exc.certainty is dx.OutcomeCertainty.UNKNOWN
         )
-        action_required = (
+        reconciliation_needed = (
             error_ticket is not None
-            and error_ticket.state is dx.ExecutionState.ACTION_REQUIRED
+            and error_ticket.state
+            in {
+                dx.ExecutionState.NOT_INCLUDED,
+                dx.ExecutionState.ACTION_REQUIRED,
+            }
         )
-        if unknown_outcome or action_required:
+        if unknown_outcome or reconciliation_needed:
             print(
                 json.dumps(
                     {

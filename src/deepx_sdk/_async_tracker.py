@@ -33,6 +33,7 @@ _TERMINAL_STATUSES = frozenset(
         TxStatus.FINALIZED,
         TxStatus.INVALID,
         TxStatus.DROPPED,
+        TxStatus.NOT_INCLUDED,
         TxStatus.USURPED,
         TxStatus.RECONCILIATION_REQUIRED,
         TxStatus.CLIENT_CLOSED,
@@ -60,8 +61,13 @@ class _TrackedTransaction(Generic[ResultT]):
 
 
 @dataclass(frozen=True)
-class _ResolvedBlock:
+class _IndexedBlock:
     extrinsic_indexes: dict[str, int]
+    block_number: int | None
+
+
+@dataclass(frozen=True)
+class _ResolvedEvents:
     events: list[dict[str, Any]]
     event_decode_ms: float
 
@@ -141,7 +147,8 @@ class TransactionTracker:
             tuple[str, _TrackedTransaction[Any]]
         ] = deque()
         self._block_transactions: dict[str, set[str]] = {}
-        self._block_tasks: dict[str, asyncio.Task[_ResolvedBlock]] = {}
+        self._block_tasks: dict[str, asyncio.Task[_IndexedBlock]] = {}
+        self._event_tasks: dict[str, asyncio.Task[_ResolvedEvents]] = {}
         self._applied_block_transactions: dict[str, set[str]] = {}
         self._block_fetch_count = 0
         self._background_tasks: set[asyncio.Task[Any]] = set()
@@ -229,25 +236,73 @@ class TransactionTracker:
             raise
         return await submitted_task
 
-    async def resolve_block(self, block_hash: str) -> None:
+    async def resolve_block(
+        self,
+        block_hash: str,
+        *,
+        transport: AsyncRpcTransport | None = None,
+    ) -> None:
+        source_transport = transport or self._transport
         task = self._block_tasks.get(block_hash)
         if task is None:
             task = asyncio.create_task(
-                self._fetch_block(block_hash),
-                name=f"deepx-resolve-block-{block_hash}",
+                self._fetch_block_index(block_hash, source_transport),
+                name=f"deepx-index-block-{block_hash}",
             )
             self._block_tasks[block_hash] = task
             self._block_fetch_count += 1
-        resolved = await asyncio.shield(task)
+        indexed = await asyncio.shield(task)
         applied = self._applied_block_transactions.setdefault(block_hash, set())
-        for tx_hash in tuple(self._block_transactions.get(block_hash, ())):
+        candidates = tuple(self._block_transactions.get(block_hash, ()))
+        matches = [
+            (tx_hash, indexed.extrinsic_indexes[tx_hash])
+            for tx_hash in candidates
+            if tx_hash not in applied and tx_hash in indexed.extrinsic_indexes
+        ]
+        for tx_hash in candidates:
+            if tx_hash not in indexed.extrinsic_indexes:
+                applied.add(tx_hash)
+        if not matches:
+            self._prune_resolved_blocks()
+            return
+
+        event_task = self._event_tasks.get(block_hash)
+        if event_task is None:
+            event_task = asyncio.create_task(
+                self._fetch_block_events(
+                    block_hash,
+                    indexed.block_number,
+                    source_transport,
+                ),
+                name=f"deepx-resolve-events-{block_hash}",
+            )
+            self._event_tasks[block_hash] = event_task
+        try:
+            resolved = await asyncio.shield(event_task)
+        except Exception as exc:
+            for tx_hash, extrinsic_index in matches:
+                applied.add(tx_hash)
+                tracked = self._transactions.get(tx_hash)
+                if tracked is not None:
+                    self._mark_included_unresolved(
+                        tracked,
+                        block_hash=block_hash,
+                        extrinsic_index=extrinsic_index,
+                        reason_code="EVENTS_UNAVAILABLE",
+                        cause=exc,
+                    )
+            self._prune_resolved_blocks()
+            return
+
+        for tx_hash, extrinsic_index in matches:
             if tx_hash in applied:
                 continue
             applied.add(tx_hash)
             tracked = self._transactions.get(tx_hash)
-            extrinsic_index = resolved.extrinsic_indexes.get(tx_hash)
-            if tracked is None or extrinsic_index is None:
+            if tracked is None:
                 continue
+            tracked.pending.recovery.matched_block = block_hash
+            tracked.pending.recovery.extrinsic_index = extrinsic_index
             scoped = _native_py._filter_events_for_extrinsic(
                 resolved.events,
                 extrinsic_idx=extrinsic_index,
@@ -293,40 +348,36 @@ class TransactionTracker:
                 event=tracked.expected_event.event,
             )
             if not matches:
-                tracked.pending.mark_in_block_failed(
-                    TransactionError(
-                        code="EXPECTED_EVENT_MISSING",
-                        stage=TxStage.INCLUSION,
-                        tx_hash=tx_hash,
-                        cloid=tracked.pending.cloid,
-                        nonce=tracked.pending.nonce,
-                        elapsed_ms=_elapsed_ms(tracked.pending),
-                        certainty=OutcomeCertainty.INCLUDED,
-                        retryable=False,
-                        suggested_action=(
-                            "Inspect the scoped block events and decoder metadata; "
-                            "do not resubmit the included transaction."
-                        ),
-                        pending=tracked.pending,
-                        cause=RuntimeError(
-                            {
-                                "block_hash": block_hash,
-                                "extrinsic_index": extrinsic_index,
-                                "expected_event": (
-                                    f"{tracked.expected_event.pallet}."
-                                    f"{tracked.expected_event.event}"
-                                ),
-                            }
-                        ),
-                        node_status=tracked.pending.node_status,
-                    )
+                self._mark_included_unresolved(
+                    tracked,
+                    block_hash=block_hash,
+                    extrinsic_index=extrinsic_index,
+                    reason_code="EXPECTED_EVENT_MISSING",
+                    cause=RuntimeError(
+                        {
+                            "expected_event": (
+                                f"{tracked.expected_event.pallet}."
+                                f"{tracked.expected_event.event}"
+                            )
+                        }
+                    ),
                 )
                 continue
             fields = matches[0].get("attributes")
             if not isinstance(fields, Mapping):
                 fields = {}
             tracked.pending.timings.event_decode_ms = resolved.event_decode_ms
-            result = tracked.result_decoder(fields, tracked.pending)
+            try:
+                result = tracked.result_decoder(fields, tracked.pending)
+            except Exception as exc:
+                self._mark_included_unresolved(
+                    tracked,
+                    block_hash=block_hash,
+                    extrinsic_index=extrinsic_index,
+                    reason_code="RESULT_DECODE_FAILED",
+                    cause=exc,
+                )
+                continue
             tracked.pending.mark_in_block_success(
                 result=result,
                 block_hash=block_hash,
@@ -339,6 +390,67 @@ class TransactionTracker:
                     completed_ns - tracked.in_block_received_ns
                 ) / 1_000_000
         self._prune_resolved_blocks()
+
+    def _mark_included_unresolved(
+        self,
+        tracked: _TrackedTransaction[Any],
+        *,
+        block_hash: str,
+        extrinsic_index: int,
+        reason_code: str,
+        cause: BaseException,
+    ) -> None:
+        pending = tracked.pending
+        pending.recovery.reason_code = reason_code
+        pending.recovery.matched_block = block_hash
+        pending.recovery.extrinsic_index = extrinsic_index
+        pending.mark_reconciliation_required(
+            ReconciliationRequired(
+                code=reason_code,
+                stage=TxStage.INCLUSION,
+                tx_hash=pending.tx_hash,
+                cloid=pending.cloid,
+                nonce=pending.nonce,
+                elapsed_ms=_elapsed_ms(pending),
+                certainty=OutcomeCertainty.INCLUDED,
+                retryable=False,
+                suggested_action=(
+                    "The extrinsic is included, but its business result could not "
+                    "be resolved from block events. Inspect the block events or "
+                    "indexer result; do not resubmit."
+                ),
+                pending=pending,
+                cause=RuntimeError(
+                    {
+                        "block_hash": block_hash,
+                        "extrinsic_index": extrinsic_index,
+                        "details": (
+                            cause.args[0]
+                            if len(cause.args) == 1
+                            else {"error_type": type(cause).__name__}
+                        ),
+                    }
+                ),
+                node_status=pending.node_status,
+            )
+        )
+
+    def pending_pool_contains(
+        self,
+        pending: PendingTransaction[Any],
+        raw_extrinsics: object,
+    ) -> bool:
+        if not isinstance(raw_extrinsics, list):
+            raise TypeError("author_pendingExtrinsics did not return a list")
+        tracked = self._transactions.get(pending.tx_hash)
+        known_data = tracked.encoded.data_hex.lower() if tracked is not None else None
+        for item in raw_extrinsics:
+            if not isinstance(item, str):
+                continue
+            normalized = item.lower()
+            if normalized == known_data or _hash_extrinsic(normalized) == pending.tx_hash:
+                return True
+        return False
 
     def _transaction_status_changed(
         self,
@@ -380,6 +492,7 @@ class TransactionTracker:
             if expired_hash is None:
                 return
             self._block_tasks.pop(expired_hash, None)
+            self._event_tasks.pop(expired_hash, None)
             self._block_transactions.pop(expired_hash, None)
             self._applied_block_transactions.pop(expired_hash, None)
 
@@ -423,9 +536,15 @@ class TransactionTracker:
         self,
         pending: PendingTransaction[Any],
         *,
-        missing_start: int,
-        missing_end: int,
+        missing_start: int | None = None,
+        missing_end: int | None = None,
         endpoint: str,
+        reason_code: str = "SCAN_INCOMPLETE",
+        scan_start: int | None = None,
+        scan_end: int | None = None,
+        finalized_head: int | None = None,
+        scan_complete: bool = False,
+        cause: BaseException | None = None,
     ) -> None:
         tracked = self._transactions.get(pending.tx_hash)
         if (
@@ -440,6 +559,33 @@ class TransactionTracker:
             }
         ):
             return
+        missing_ranges = (
+            [(missing_start, missing_end)]
+            if missing_start is not None and missing_end is not None
+            else []
+        )
+        recovery = pending.recovery
+        recovery.reason_code = reason_code
+        recovery.scan_start = scan_start if scan_start is not None else missing_start
+        recovery.scan_end = scan_end if scan_end is not None else missing_end
+        recovery.finalized_head = finalized_head
+        recovery.scan_complete = scan_complete
+        recovery.missing_ranges = missing_ranges
+        recovery.recovery_endpoint = endpoint
+        details = {
+            "reason_code": reason_code,
+            "scan_start": recovery.scan_start,
+            "scan_end": recovery.scan_end,
+            "finalized_head": finalized_head,
+            "scan_complete": scan_complete,
+            "missing_ranges": [
+                {"start": start, "end": end}
+                for start, end in missing_ranges
+            ],
+            "endpoint": endpoint,
+        }
+        if cause is not None:
+            details["error_type"] = type(cause).__name__
         error = ReconciliationRequired(
             code="RECONCILIATION_REQUIRED",
             stage=TxStage.RECOVERY,
@@ -454,20 +600,15 @@ class TransactionTracker:
             ),
             retryable=False,
             suggested_action=(
-                f"Query archive RPC or an indexer at {endpoint} for exact "
-                f"missing heights {missing_start}-{missing_end}; reconcile by "
-                "tx hash/cloid before any resubmission."
+                "Inspect the structured recovery diagnostics and query an archive "
+                f"RPC or indexer at {endpoint}; reconcile by tx hash/cloid before "
+                "any resubmission."
             ),
             pending=pending,
-            cause=RuntimeError(
-                {
-                    "missing_start": missing_start,
-                    "missing_end": missing_end,
-                    "endpoint": endpoint,
-                }
-            ),
+            cause=RuntimeError(details),
             node_status=pending.node_status,
         )
+        error.reason_code = reason_code
         error.missing_start = missing_start
         error.missing_end = missing_end
         error.endpoint = endpoint
@@ -548,10 +689,12 @@ class TransactionTracker:
         node_status, value = next(iter(update.items()))
         normalized = node_status.lower()
         if normalized in {"future", "ready", "broadcast"}:
+            self._record_submission_endpoint(tracked.pending)
             self._record_acceptance(tracked)
             tracked.pending.mark_submitted(node_status=node_status)
             return
         if normalized == "inblock" and isinstance(value, str):
+            self._record_submission_endpoint(tracked.pending)
             received_ns = time.perf_counter_ns()
             self._record_acceptance(tracked, received_ns=received_ns)
             if tracked.pending.status.value in {"created", "submitting"}:
@@ -568,6 +711,7 @@ class TransactionTracker:
             )
             return
         if normalized == "finalized" and isinstance(value, str):
+            self._record_submission_endpoint(tracked.pending)
             received_ns = time.perf_counter_ns()
             self._record_acceptance(tracked, received_ns=received_ns)
             if tracked.pending.status in {TxStatus.CREATED, TxStatus.SUBMITTING}:
@@ -659,8 +803,12 @@ class TransactionTracker:
             self._record_finalization(tracked)
             pending.mark_finalized(block_hash=block_hash)
 
-    async def _fetch_block(self, block_hash: str) -> _ResolvedBlock:
-        block_response = await self._transport.request("chain_getBlock", [block_hash])
+    async def _fetch_block_index(
+        self,
+        block_hash: str,
+        transport: AsyncRpcTransport,
+    ) -> _IndexedBlock:
+        block_response = await transport.request("chain_getBlock", [block_hash])
         extrinsics = _block_extrinsics(block_response)
         known_by_data = {
             self._transactions[tx_hash].encoded.data_hex.lower(): tx_hash
@@ -673,14 +821,39 @@ class TransactionTracker:
             tx_hash = known_by_data.get(normalized) or _hash_extrinsic(normalized)
             extrinsic_indexes[tx_hash] = index
 
-        raw_events_batches = await self._fetch_events_map_batches(block_hash, block_response)
+        return _IndexedBlock(
+            extrinsic_indexes=extrinsic_indexes,
+            block_number=_block_number_from_response(block_response),
+        )
+
+    def _record_submission_endpoint(
+        self,
+        pending: PendingTransaction[Any],
+    ) -> None:
+        if pending.recovery.submission_endpoint is not None:
+            return
+        pending.recovery.submission_endpoint = str(
+            getattr(self._transport, "endpoint", "<configured endpoint>")
+        )
+
+    async def _fetch_block_events(
+        self,
+        block_hash: str,
+        block_number: int | None,
+        transport: AsyncRpcTransport,
+    ) -> _ResolvedEvents:
+        raw_events_batches = await self._fetch_events_map_batches(
+            block_hash,
+            block_number,
+            transport,
+        )
         decode_started_ns = time.perf_counter_ns()
         if raw_events_batches:
             # Multi-threaded runtime: events live in System.EventsMap(number, thread).
             decoded = await self._encoder.decode_system_events_map(raw_events_batches)
         else:
             # Legacy single-thread runtime: events live in System.Events.
-            raw_events = await self._transport.request(
+            raw_events = await transport.request(
                 "state_getStorage",
                 [self._encoder.snapshot.system_events_storage_key, block_hash],
             )
@@ -696,8 +869,7 @@ class TransactionTracker:
             if (normalized := _native_py._normalize_event_record_item(event))
             is not None
         ]
-        return _ResolvedBlock(
-            extrinsic_indexes=extrinsic_indexes,
+        return _ResolvedEvents(
             events=events,
             event_decode_ms=event_decode_ms,
         )
@@ -705,19 +877,19 @@ class TransactionTracker:
     async def _fetch_events_map_batches(
         self,
         block_hash: str,
-        block_response: object,
+        block_number: int | None,
+        transport: AsyncRpcTransport,
     ) -> list[str]:
         """Fetch raw System.EventsMap values, one per thread, for this block.
 
         Returns [] when the runtime has no thread support (older runtimes) so the
         caller falls back to the System.Events single-key path.
         """
-        number = _block_number_from_response(block_response)
-        if number is None:
+        if block_number is None:
             return []
-        thread_raw = await self._transport.request(
+        thread_raw = await transport.request(
             "state_getStorage",
-            [_native_py._system_threads_storage_key_hex(block_number=number), block_hash],
+            [_native_py._system_threads_storage_key_hex(block_number=block_number), block_hash],
         )
         thread_count = 0
         if isinstance(thread_raw, str) and thread_raw:
@@ -725,11 +897,11 @@ class TransactionTracker:
             thread_count = raw[0] if raw else 0
         batches: list[str] = []
         for thread_id in range(max(0, thread_count) + 1):
-            raw = await self._transport.request(
+            raw = await transport.request(
                 "state_getStorage",
                 [
                     _native_py._system_events_map_storage_key_hex(
-                        block_number=number, thread_id=thread_id
+                        block_number=block_number, thread_id=thread_id
                     ),
                     block_hash,
                 ],

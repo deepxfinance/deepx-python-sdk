@@ -176,6 +176,7 @@ def test_non_timestamp_payment_uses_conservative_admission_guidance() -> None:
         (OutcomeCertainty.REJECTED, "node rejected"),
         (OutcomeCertainty.REPLACED, "was replaced"),
         (OutcomeCertainty.EXECUTED_FAILED, "executed and failed"),
+        (OutcomeCertainty.NOT_INCLUDED, "not included through the observed finalized head"),
         (OutcomeCertainty.INCLUDED, "included but not final"),
         (OutcomeCertainty.FINALIZED, "is finalized"),
     ],

@@ -29,6 +29,7 @@ from deepx_sdk._types import SpotCancelOrderResult, SpotPlaceOrderResult
 from deepx_sdk.async_client import (
     AsyncChainClient,
     AsyncComponents,
+    _production_components,
 )
 
 
@@ -103,6 +104,7 @@ class FakeTracker:
                 TxStatus.FINALIZED,
                 TxStatus.INVALID,
                 TxStatus.DROPPED,
+                TxStatus.NOT_INCLUDED,
                 TxStatus.USURPED,
                 TxStatus.CLIENT_CLOSED,
             }
@@ -234,6 +236,58 @@ def test_async_client_requires_connect_and_closes_pending() -> None:
     asyncio.run(run())
 
 
+def test_async_client_connects_and_closes_dedicated_recovery_transport() -> None:
+    async def run() -> None:
+        submission_transport = FakeTransport()
+        recovery_transport = FakeTransport()
+        components = AsyncComponents(
+            transport=submission_transport,
+            encoder=FakeEncoder(),
+            tracker=FakeTracker(),
+            recovery=FakeRecovery(),
+            recovery_transport=recovery_transport,
+        )
+
+        async def factory(_client: AsyncChainClient) -> AsyncComponents:
+            return components
+
+        client = AsyncChainClient(
+            substrate_ws="ws://node.test",
+            private_key="0x" + "11" * 32,
+            subaccount="0x" + "22" * 20,
+            component_factory=factory,
+        )
+        await client.connect()
+        await client.close()
+
+        assert submission_transport.connect_calls == 1
+        assert recovery_transport.connect_calls == 1
+        assert recovery_transport.close_calls == 1
+        assert submission_transport.close_calls == 1
+
+    asyncio.run(run())
+
+
+def test_production_components_route_recovery_to_configured_endpoints() -> None:
+    async def run() -> None:
+        client = AsyncChainClient(
+            substrate_ws_endpoints=["ws://submission.test"],
+            recovery_substrate_ws_endpoints=["ws://recovery.test"],
+            private_key="0x" + "11" * 32,
+            subaccount="0x" + "22" * 20,
+        )
+        components = await _production_components(client)
+
+        assert components.transport.connection_url == "ws://submission.test"
+        assert components.recovery_transport.connection_url == "ws://recovery.test"
+        assert components.recovery._pool_transport is components.transport
+
+        await components.recovery_transport.close()
+        await components.transport.close()
+
+    asyncio.run(run())
+
+
 def test_async_client_pool_limit_defaults_and_validation() -> None:
     client = AsyncChainClient(
         substrate_ws="ws://node.test",
@@ -269,6 +323,11 @@ def test_async_client_accepts_ordered_rpc_endpoints() -> None:
             "ws://backup.test",
             "ws://primary.test",
         ],
+        recovery_substrate_ws_endpoints=[
+            "ws://recovery.test",
+            "ws://recovery-backup.test",
+            "ws://recovery.test",
+        ],
         private_key="0x" + "11" * 32,
         subaccount="0x" + "22" * 20,
     )
@@ -279,6 +338,10 @@ def test_async_client_accepts_ordered_rpc_endpoints() -> None:
         "ws://backup.test",
     )
     assert client.active_rpc_endpoint == "ws://primary.test"
+    assert client.recovery_substrate_ws_endpoints == (
+        "ws://recovery.test",
+        "ws://recovery-backup.test",
+    )
 
     with pytest.raises(ValueError, match="substrate_ws_endpoints"):
         AsyncChainClient(
