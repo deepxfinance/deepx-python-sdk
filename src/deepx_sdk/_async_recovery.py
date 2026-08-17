@@ -42,6 +42,8 @@ class RecoveryConfig:
     # the dev deployment has shown 30-50s) must not be falsely flagged.
     stale_ms: int = 60_000
     scan_concurrency: int = 8
+    iteration_timeout_s: float = 30.0
+    no_progress_timeout_s: float = 60.0
 
 
 class RecoveryTracker:
@@ -63,6 +65,10 @@ class RecoveryTracker:
         self._config = config or RecoveryConfig()
         if self._config.scan_concurrency < 1:
             raise ValueError("Recovery scan_concurrency must be at least 1.")
+        if self._config.iteration_timeout_s <= 0:
+            raise ValueError("Recovery iteration_timeout_s must be positive.")
+        if self._config.no_progress_timeout_s <= 0:
+            raise ValueError("Recovery no_progress_timeout_s must be positive.")
         self._started = False
         self._closed = False
         self._recovery_lock = asyncio.Lock()
@@ -81,6 +87,11 @@ class RecoveryTracker:
         self._watchdog_task: asyncio.Task[None] | None = None
         self._last_head_at: float | None = None
         self._last_head_number: int | None = None
+        self._last_recovery_success_at: float | None = None
+        self._last_recovery_success_unix_ms: int | None = None
+        self._last_recovery_error: str | None = None
+        self._consecutive_recovery_failures = 0
+        self._last_forced_reconnect_at: float | None = None
 
     async def start(self) -> None:
         if self._started:
@@ -116,6 +127,69 @@ class RecoveryTracker:
             self._last_finalized_hash,
             self._last_finalized_number,
         )
+        self._record_recovery_success()
+
+    def health_snapshot(self) -> dict[str, Any]:
+        now = time.monotonic()
+
+        def transport_health(transport: Any) -> dict[str, Any]:
+            state = getattr(transport, "state", None)
+            return {
+                "state": getattr(state, "value", state),
+                "endpoint": getattr(transport, "endpoint", None),
+                "connection_count": getattr(transport, "connection_count", None),
+            }
+
+        return {
+            "started": self._started,
+            "closed": self._closed,
+            "best_head": self._last_best_number,
+            "finalized_head": self._last_finalized_number,
+            "finalized_scan_head": self._last_finalized_scan_number,
+            "pending_best_head": self._pending_best_number,
+            "pending_finalized_head": self._pending_finalized_number,
+            "last_success_age_s": (
+                None
+                if self._last_recovery_success_at is None
+                else max(0.0, now - self._last_recovery_success_at)
+            ),
+            "last_success_unix_ms": self._last_recovery_success_unix_ms,
+            "consecutive_failures": self._consecutive_recovery_failures,
+            "last_error": self._last_recovery_error,
+            "head_transport": transport_health(self._transport),
+            "scan_transport": transport_health(self._scan_transport),
+            "pool_transport": transport_health(self._pool_transport),
+        }
+
+    def _record_recovery_success(self) -> None:
+        self._last_recovery_success_at = time.monotonic()
+        self._last_recovery_success_unix_ms = int(time.time() * 1_000)
+        self._last_recovery_error = None
+        self._consecutive_recovery_failures = 0
+
+    def _record_recovery_failure(self, error: BaseException) -> None:
+        self._consecutive_recovery_failures += 1
+        self._last_recovery_error = type(error).__name__
+
+    async def _restart_stalled_scan_transport(self) -> None:
+        now = time.monotonic()
+        last_success = self._last_recovery_success_at
+        if (
+            last_success is not None
+            and now - last_success < self._config.no_progress_timeout_s
+        ):
+            return
+        last_restart = self._last_forced_reconnect_at
+        if (
+            last_restart is not None
+            and now - last_restart < self._config.no_progress_timeout_s
+        ):
+            return
+        restart = getattr(self._scan_transport, "force_reconnect", None)
+        if not callable(restart):
+            return
+        self._last_forced_reconnect_at = now
+        await restart("recovery made no progress within its deadline")
 
     async def _validate_chain_identity(self) -> None:
         transports = []
@@ -216,7 +290,13 @@ class RecoveryTracker:
 
     async def _handle_connection_state(self, state: ConnectionState) -> None:
         if state is ConnectionState.RECOVERING and not self._closed:
-            await self._recover(resubscribe=True)
+            try:
+                await self._recover(resubscribe=True)
+            except Exception as exc:
+                self._record_recovery_failure(exc)
+                raise
+            else:
+                self._record_recovery_success()
 
     async def _recover(self, *, resubscribe: bool) -> None:
         async with self._recovery_lock:
@@ -662,49 +742,60 @@ class RecoveryTracker:
             ):
                 continue  # healthy and nothing to reconcile
             try:
-                async with self._recovery_lock:
-                    if self._closed:
-                        return
-                    current_hash, current_number = await self._read_best_head()
-                    previous = self._last_best_number
-                    # The subscription is dead when it stayed silent for the
-                    # whole liveness window while the chain moved past the
-                    # last head it delivered. Check against the last HEAD
-                    # number (not last scan): a watchdog scan catching up
-                    # must not mask the fact that heads stopped arriving.
-                    last_head_number = self._last_head_number
-                    subscription_dead = (
-                        silent_for >= self._config.subscription_liveness_s
-                        and last_head_number is not None
-                        and current_number > last_head_number
-                    )
-                    if subscription_dead:
-                        logger.warning(
-                            "Heads subscription silent for %.1fs while the chain "
-                            "advanced from %d to %d; re-subscribing",
-                            silent_for,
-                            last_head_number,
-                            current_number,
-                        )
-                        await self._subscribe_all()
-                        self._last_head_at = time.monotonic()
-                        self._last_head_number = current_number
-                    if previous is not None and current_number > previous:
-                        await self._scan_best_chain(previous + 1, current_number)
-                        self._last_best_hash = current_hash
-                        self._last_best_number = current_number
-                    finalized_hash, finalized_number = await self._read_finalized_head()
-                    await self._scan_finalized_chain(finalized_number)
-                    self._last_finalized_hash = finalized_hash
-                    self._last_finalized_number = finalized_number
-                    await self._reconcile_finalized(
-                        finalized_hash,
-                        finalized_number,
-                    )
+                async with asyncio.timeout(self._config.iteration_timeout_s):
+                    await self._watchdog_iteration(silent_for)
+                self._record_recovery_success()
             except asyncio.CancelledError:
                 raise
-            except Exception:
+            except Exception as exc:
+                self._record_recovery_failure(exc)
                 logger.exception("Recovery watchdog iteration failed")
+                try:
+                    await self._restart_stalled_scan_transport()
+                except asyncio.CancelledError:
+                    raise
+                except Exception as restart_error:
+                    self._record_recovery_failure(restart_error)
+                    logger.exception("Recovery scan transport restart failed")
+
+    async def _watchdog_iteration(self, silent_for: float) -> None:
+        async with self._recovery_lock:
+            if self._closed:
+                return
+            current_hash, current_number = await self._read_best_head()
+            previous = self._last_best_number
+            # The subscription is dead when it stayed silent for the whole
+            # liveness window while the chain moved past the last head it
+            # delivered. A watchdog scan catching up must not mask this.
+            last_head_number = self._last_head_number
+            subscription_dead = (
+                silent_for >= self._config.subscription_liveness_s
+                and last_head_number is not None
+                and current_number > last_head_number
+            )
+            if subscription_dead:
+                logger.warning(
+                    "Heads subscription silent for %.1fs while the chain "
+                    "advanced from %d to %d; re-subscribing",
+                    silent_for,
+                    last_head_number,
+                    current_number,
+                )
+                await self._subscribe_all()
+                self._last_head_at = time.monotonic()
+                self._last_head_number = current_number
+            if previous is not None and current_number > previous:
+                await self._scan_best_chain(previous + 1, current_number)
+                self._last_best_hash = current_hash
+                self._last_best_number = current_number
+            finalized_hash, finalized_number = await self._read_finalized_head()
+            await self._scan_finalized_chain(finalized_number)
+            self._last_finalized_hash = finalized_hash
+            self._last_finalized_number = finalized_number
+            await self._reconcile_finalized(
+                finalized_hash,
+                finalized_number,
+            )
 
     async def _handle_new_head(self, update: object) -> None:
         # Must return fast: the transport drops the subscription when its
@@ -738,15 +829,18 @@ class RecoveryTracker:
                     if target is None or (
                         previous is not None and target <= previous
                     ):
+                        self._record_recovery_success()
                         return
                     if previous is None:
                         self._last_best_number = target
                         self._last_best_hash = await self._block_hash(target)
                     else:
                         await self._scan_best_chain(previous + 1, target)
+                    self._record_recovery_success()
         except asyncio.CancelledError:
             raise
-        except Exception:
+        except Exception as exc:
+            self._record_recovery_failure(exc)
             logger.exception("Recovery best-head scan failed")
 
     async def _handle_finalized_head(self, update: object) -> None:
@@ -776,15 +870,18 @@ class RecoveryTracker:
                     if target is None or (
                         previous is not None and target <= previous
                     ):
+                        self._record_recovery_success()
                         return
                     block_hash = await self._block_hash(target)
                     await self._scan_finalized_chain(target)
                     self._last_finalized_hash = block_hash
                     self._last_finalized_number = target
                     await self._reconcile_finalized(block_hash, target)
+                    self._record_recovery_success()
         except asyncio.CancelledError:
             raise
-        except Exception:
+        except Exception as exc:
+            self._record_recovery_failure(exc)
             logger.exception("Recovery finalized-head scan failed")
 
     async def _reconcile_finalized(
@@ -797,31 +894,67 @@ class RecoveryTracker:
             "endpoint",
             "<configured endpoint>",
         )
+        by_block: dict[str, list[PendingTransaction[Any]]] = {}
         for pending in self._tracker.pending_transactions:
             if (
                 pending.status is not TxStatus.IN_BLOCK_SUCCESS
                 or pending.block_hash is None
             ):
                 continue
+            by_block.setdefault(pending.block_hash, []).append(pending)
+
+        async def inspect_block(
+            block_hash: str,
+        ) -> tuple[int | None, str | None]:
             header = await self._scan_transport.request(
                 "chain_getHeader",
-                [pending.block_hash],
+                [block_hash],
             )
             included_number = _head_number(header)
             if included_number is None or included_number > finalized_number:
-                continue
-            canonical_hash = await self._block_hash(included_number)
-            if canonical_hash != pending.block_hash:
-                self._tracker.mark_reconciliation_required(
-                    pending,
-                    endpoint=endpoint,
-                    reason_code="FINALIZED_CANONICAL_MISMATCH",
-                    scan_start=included_number,
-                    scan_end=included_number,
-                    finalized_head=finalized_number,
-                )
-                continue
-            await self._tracker.finalize_ancestor(pending, finalized_hash)
+                return included_number, None
+            return included_number, await self._block_hash(included_number)
+
+        block_hashes = tuple(by_block)
+        for batch_start in range(
+            0,
+            len(block_hashes),
+            self._config.scan_concurrency,
+        ):
+            batch = block_hashes[
+                batch_start : batch_start + self._config.scan_concurrency
+            ]
+            results = await asyncio.gather(
+                *(inspect_block(block_hash) for block_hash in batch),
+                return_exceptions=True,
+            )
+            first_error: BaseException | None = None
+            for block_hash, result in zip(batch, results, strict=True):
+                if isinstance(result, BaseException):
+                    first_error = first_error or result
+                    for pending in by_block[block_hash]:
+                        pending.recovery.add_rpc_error(
+                            method="chain_getHeader/chain_getBlockHash",
+                            error=result,
+                        )
+                    continue
+                included_number, canonical_hash = result
+                if included_number is None or included_number > finalized_number:
+                    continue
+                for pending in by_block[block_hash]:
+                    if canonical_hash != block_hash:
+                        self._tracker.mark_reconciliation_required(
+                            pending,
+                            endpoint=endpoint,
+                            reason_code="FINALIZED_CANONICAL_MISMATCH",
+                            scan_start=included_number,
+                            scan_end=included_number,
+                            finalized_head=finalized_number,
+                        )
+                        continue
+                    await self._tracker.finalize_ancestor(pending, finalized_hash)
+            if first_error is not None:
+                raise first_error
 
     async def _handle_runtime_version(self, update: object) -> None:
         spec_version = _spec_version(update)

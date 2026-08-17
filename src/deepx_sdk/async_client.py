@@ -63,9 +63,10 @@ class AsyncComponents:
 
 @dataclass
 class _CapacityReservation:
-    tracked: bool = True
+    admission: bool = True
     pool: bool = True
     outbound: bool = True
+    finalization: bool = False
 
 
 class AsyncPerpMarketClient:
@@ -330,7 +331,9 @@ class AsyncChainClient:
         net: str | None = None,
         timeouts: TxTimeouts | None = None,
         recovery_config: RecoveryConfig | None = None,
+        rpc_request_timeout_s: float = 10.0,
         max_tracked_transactions: int = 1024,
+        max_finalization_transactions: int = 4096,
         max_completed_transactions: int = 10_000,
         max_resolved_blocks: int = 256,
         node_pool_limit_per_account: int = 50,
@@ -358,9 +361,17 @@ class AsyncChainClient:
         self.subaccount = subaccount
         self.timeouts = timeouts or TxTimeouts()
         self.recovery_config = recovery_config or RecoveryConfig()
+        self.rpc_request_timeout_s = float(rpc_request_timeout_s)
+        if self.rpc_request_timeout_s <= 0:
+            raise ValueError("rpc_request_timeout_s must be positive")
         self.max_tracked_transactions = int(max_tracked_transactions)
+        self.max_finalization_transactions = int(max_finalization_transactions)
         self.max_completed_transactions = int(max_completed_transactions)
         self.max_resolved_blocks = int(max_resolved_blocks)
+        if self.max_tracked_transactions <= 0:
+            raise ValueError("max_tracked_transactions must be positive")
+        if self.max_finalization_transactions <= 0:
+            raise ValueError("max_finalization_transactions must be positive")
         if self.max_completed_transactions < 0:
             raise ValueError("max_completed_transactions must be non-negative")
         if self.max_resolved_blocks <= 0:
@@ -391,6 +402,8 @@ class AsyncChainClient:
             self.max_pool_transactions_per_account + self.priority_pool_reserve
         )
         self.max_outbound_queue = int(max_outbound_queue)
+        if self.max_outbound_queue <= 0:
+            raise ValueError("max_outbound_queue must be positive")
         self._component_factory = component_factory or _production_components
         self.transactions = TransactionManager(
             listener=transaction_listener,
@@ -408,6 +421,7 @@ class AsyncChainClient:
         self._tracked_count = 0
         self._pool_count = 0
         self._outbound_count = 0
+        self._finalization_count = 0
         self._peak_tracked_count = 0
         self._peak_pool_count = 0
         self._reservations: dict[
@@ -511,6 +525,43 @@ class AsyncChainClient:
             getattr(components.transport, "endpoint", _safe_url(self.substrate_ws))
         )
 
+    def health_snapshot(self) -> dict[str, Any]:
+        """Return a JSON-safe snapshot suitable for logs and metrics."""
+        status_counts: dict[str, int] = {}
+        oldest_age_ms = 0
+        for pending in self._reservations:
+            status = pending.status.value
+            status_counts[status] = status_counts.get(status, 0) + 1
+            oldest_age_ms = max(
+                oldest_age_ms,
+                int(pending.diagnostics()["elapsed_ms"]),
+            )
+        capacity = {
+            "tracked_count": self._tracked_count,
+            "tracked_max": self.max_tracked_transactions,
+            "pool_count": self._pool_count,
+            "pool_max": self.max_pool_transactions_per_account,
+            "priority_pool_max": self.priority_pool_limit,
+            "outbound_count": self._outbound_count,
+            "outbound_max": self.max_outbound_queue,
+            "finalization_count": self._finalization_count,
+            "finalization_max": self.max_finalization_transactions,
+            "status_counts": status_counts,
+            "oldest_age_ms": oldest_age_ms,
+        }
+        components = self._components
+        recovery_health = None
+        if components is not None:
+            snapshot = getattr(components.recovery, "health_snapshot", None)
+            if callable(snapshot):
+                recovery_health = snapshot()
+        return {
+            "connected": self._connected and not self._closed,
+            "active_rpc_endpoint": self.active_rpc_endpoint,
+            "capacity": capacity,
+            "recovery": recovery_health,
+        }
+
     def _require_connected(self) -> None:
         if self._connected and not self._closed:
             return
@@ -583,6 +634,7 @@ class AsyncChainClient:
                 if exc.certainty is OutcomeCertainty.NOT_SUBMITTED:
                     self._release_pool(error_pending, reservation)
                     self._release_tracked(reservation)
+                    self._reservations.pop(error_pending, None)
                 else:
                     self._release_for_status(
                         error_pending,
@@ -677,7 +729,12 @@ class AsyncChainClient:
             if error_pending is not None:
                 reservation = self._register_pending(error_pending)
                 self._release_outbound(reservation)
-                self._release_for_status(error_pending, error_pending.status)
+                if exc.certainty is OutcomeCertainty.NOT_SUBMITTED:
+                    self._release_pool(error_pending, reservation)
+                    self._release_tracked(reservation)
+                    self._reservations.pop(error_pending, None)
+                else:
+                    self._release_for_status(error_pending, error_pending.status)
             else:
                 self._release_unbound_capacity()
                 self._ensure_nonce_reserved(original.nonce)
@@ -699,17 +756,27 @@ class AsyncChainClient:
                 else self._has_normal_capacity()
             )
             if not has_capacity:
-                constraint = (
-                    "the configured priority pool limit of "
-                    f"{self.priority_pool_limit} transactions per account"
+                health = self.health_snapshot()
+                capacity = health["capacity"]
+                limits: list[str] = []
+                if self._tracked_count >= self.max_tracked_transactions:
+                    limits.append("tracked")
+                pool_limit = (
+                    self.priority_pool_limit
                     if priority
-                    else (
-                        "a local tracked, outbound, or per-account pool "
-                        f"capacity limit ({self.max_tracked_transactions}/"
-                        f"{self.max_outbound_queue}/"
-                        f"{self.max_pool_transactions_per_account})"
-                    )
+                    else self.max_pool_transactions_per_account
                 )
+                if self._pool_count >= pool_limit:
+                    limits.append("priority_pool" if priority else "pool")
+                if self._outbound_count >= self.max_outbound_queue:
+                    limits.append("outbound")
+                if limits == ["priority_pool"]:
+                    constraint = (
+                        "the configured priority pool limit of "
+                        f"{self.priority_pool_limit} transactions per account"
+                    )
+                else:
+                    constraint = f"{', '.join(limits) or 'unknown'} capacity"
                 raise ClientBackpressure(
                     code="CLIENT_BACKPRESSURE",
                     stage=TxStage.CLIENT,
@@ -720,6 +787,12 @@ class AsyncChainClient:
                         f"Submission was blocked by {constraint}. Wait for "
                         "capacity before submitting."
                     ),
+                    details={
+                        "limiting_capacity": limits,
+                        "capacity": capacity,
+                        "active_rpc_endpoint": health["active_rpc_endpoint"],
+                        "recovery": health["recovery"],
+                    },
                 )
             self._tracked_count += 1
             self._pool_count += 1
@@ -783,11 +856,43 @@ class AsyncChainClient:
         reservation = self._reservations.get(pending)
         if reservation is None:
             return
-        if status in _POOL_EXIT_STATUSES:
-            self._release_pool(pending, reservation)
-        if status in _TERMINAL_STATUSES:
+        wants_admission = status in _ADMISSION_STATUSES
+        wants_pool = status in _POOL_STATUSES
+        wants_finalization = status is TxStatus.IN_BLOCK_SUCCESS
+        if wants_admission and not reservation.admission:
+            reservation.admission = True
+            self._tracked_count += 1
+            self._peak_tracked_count = max(
+                self._peak_tracked_count,
+                self._tracked_count,
+            )
+        elif not wants_admission:
             self._release_tracked(reservation)
-        if not reservation.tracked and not reservation.pool:
+        if wants_pool and not reservation.pool:
+            reservation.pool = True
+            self._pool_count += 1
+            self._peak_pool_count = max(self._peak_pool_count, self._pool_count)
+            self._nonce_pool_refs[pending.nonce] = (
+                self._nonce_pool_refs.get(pending.nonce, 0) + 1
+            )
+            self._ensure_nonce_reserved(pending.nonce)
+        elif not wants_pool:
+            self._release_pool(pending, reservation)
+        if wants_finalization and not reservation.finalization:
+            reservation.finalization = True
+            self._finalization_count += 1
+            self._enforce_finalization_limit()
+        elif not wants_finalization and reservation.finalization:
+            reservation.finalization = False
+            self._finalization_count -= 1
+        if not any(
+            (
+                reservation.admission,
+                reservation.pool,
+                reservation.outbound,
+                reservation.finalization,
+            )
+        ):
             self._reservations.pop(pending, None)
 
     def _release_outbound(self, reservation: _CapacityReservation) -> None:
@@ -811,9 +916,42 @@ class AsyncChainClient:
                 self._nonce_pool_refs[pending.nonce] = refs - 1
 
     def _release_tracked(self, reservation: _CapacityReservation) -> None:
-        if reservation.tracked:
-            reservation.tracked = False
+        if reservation.admission:
+            reservation.admission = False
             self._tracked_count -= 1
+
+    def _enforce_finalization_limit(self) -> None:
+        excess = self._finalization_count - self.max_finalization_transactions
+        if excess <= 0 or self._components is None:
+            return
+        mark = getattr(
+            self._components.tracker,
+            "mark_reconciliation_required",
+            None,
+        )
+        if not callable(mark):
+            return
+        candidates = sorted(
+            (
+                pending
+                for pending, reservation in self._reservations.items()
+                if reservation.finalization
+            ),
+            key=lambda pending: pending.timings.created_at,
+        )
+        scan_transport = self._components.recovery_scan_transport
+        endpoint = str(
+            getattr(scan_transport, "endpoint", self.active_rpc_endpoint)
+        )
+        for pending in candidates[:excess]:
+            mark(
+                pending,
+                endpoint=endpoint,
+                reason_code="FINALIZATION_BACKLOG_LIMIT",
+                cause=RuntimeError(
+                    "Finalization tracking capacity was exceeded."
+                ),
+            )
 
     def _release_unbound_capacity(self) -> None:
         self._tracked_count -= 1
@@ -862,9 +1000,15 @@ _TERMINAL_STATUSES = frozenset(
         TxStatus.CLIENT_CLOSED,
     }
 )
-_POOL_EXIT_STATUSES = _TERMINAL_STATUSES | {
-    TxStatus.IN_BLOCK_SUCCESS,
-}
+_ADMISSION_STATUSES = frozenset(
+    {
+        TxStatus.CREATED,
+        TxStatus.SUBMITTING,
+        TxStatus.SUBMITTED,
+        TxStatus.RETRACTED,
+    }
+)
+_POOL_STATUSES = _ADMISSION_STATUSES
 
 
 async def _production_components(client: AsyncChainClient) -> AsyncComponents:
@@ -872,6 +1016,7 @@ async def _production_components(client: AsyncChainClient) -> AsyncComponents:
         "auto_reconnect": True,
         "reconnect_initial_ms": client.recovery_config.reconnect_initial_ms,
         "reconnect_max_ms": client.recovery_config.reconnect_max_ms,
+        "request_timeout_s": client.rpc_request_timeout_s,
     }
     transport = AsyncRpcTransport(
         client.substrate_ws_endpoints,

@@ -105,7 +105,10 @@ class AsyncRpcTransport:
         reconnect_max_ms: int = 3_000,
         reconnect_jitter: ReconnectJitter | None = None,
         reconnect_sleep: ReconnectSleep = asyncio.sleep,
+        request_timeout_s: float = 10.0,
     ) -> None:
+        if request_timeout_s <= 0:
+            raise ValueError("request_timeout_s must be positive")
         self._endpoints = _normalize_endpoints(url)
         self._endpoint_index = 0
         self._url = self._endpoints[0]
@@ -121,6 +124,7 @@ class AsyncRpcTransport:
         self._reconnect_max_ms = reconnect_max_ms
         self._reconnect_jitter = reconnect_jitter or _jittered_delay
         self._reconnect_sleep = reconnect_sleep
+        self._request_timeout_s = float(request_timeout_s)
         self._connection_state_callbacks: list[ConnectionStateCallback] = []
         self._close_task: asyncio.Task[None] | None = None
         self._retained_sockets: list[Any] = []
@@ -182,6 +186,19 @@ class AsyncRpcTransport:
             self._connection_state_callbacks.remove(callback)
         except ValueError:
             pass
+
+    async def force_reconnect(self, reason: str) -> None:
+        """Retire the current socket so the reconnect loop can replace it."""
+        if self._state is ConnectionState.CLOSED:
+            raise RPCError("WebSocket transport is closed.")
+        socket = self._socket
+        if socket is None:
+            self._schedule_reconnect()
+            return
+        await self._disconnect_connection(
+            f"forced reconnect: {reason}",
+            source_socket=socket,
+        )
 
     async def connect(self) -> None:
         if self._state is ConnectionState.CONNECTED:
@@ -328,7 +345,7 @@ class AsyncRpcTransport:
         }
         source_socket = self._socket
 
-        try:
+        async def send_and_wait() -> object:
             async with self._send_lock:
                 if future.done() or self._state not in {
                     ConnectionState.CONNECTED,
@@ -338,6 +355,32 @@ class AsyncRpcTransport:
                 self._request_may_have_been_sent.add(request_id)
                 await source_socket.send(json.dumps(message))
             return await future
+
+        try:
+            try:
+                return await asyncio.wait_for(
+                    send_and_wait(),
+                    timeout=self._request_timeout_s,
+                )
+            except TimeoutError:
+                may_have_been_sent = (
+                    request_id in self._request_may_have_been_sent
+                )
+                if not future.done():
+                    future.cancel()
+                try:
+                    await self._disconnect_connection(
+                        f"RPC method {method!r} timed out after "
+                        f"{self._request_timeout_s:g}s",
+                        source_socket=source_socket,
+                    )
+                except asyncio.CancelledError:
+                    raise
+                raise TransportRequestError(
+                    f"RPC method {method!r} timed out after "
+                    f"{self._request_timeout_s:g}s.",
+                    may_have_been_sent=may_have_been_sent,
+                ) from None
         except asyncio.CancelledError:
             if future.done() and not future.cancelled():
                 future.exception()
