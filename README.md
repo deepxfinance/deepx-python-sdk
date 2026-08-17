@@ -310,6 +310,23 @@ client = dx.AsyncChainClient(
 
 The same options are available on `ChainClient`. Active transactions are never evicted. Evicting an old completed transaction from client indexes does not invalidate a ticket still held by application code. Persist audit history outside the SDK before relying on these bounded in-process indexes.
 
+For `AsyncChainClient`, an `IN_BLOCK_SUCCESS` ticket no longer consumes submission capacity while it waits for finality. Finalization tracking has its own bounded backlog, so a stalled finalized-head RPC cannot stop new orders. RPC calls and recovery iterations also have deadlines; repeated recovery stalls force the scan connection to be rebuilt. Capacity and recovery diagnostics are available through `client.health_snapshot()` and are included in `CLIENT_BACKPRESSURE` error details:
+
+```python
+client = dx.AsyncChainClient(
+    ...,
+    rpc_request_timeout_s=10,
+    max_tracked_transactions=1_024,
+    max_finalization_transactions=4_096,
+    recovery_config=dx.RecoveryConfig(
+        iteration_timeout_s=30,
+        no_progress_timeout_s=60,
+    ),
+)
+```
+
+If the finalization backlog itself reaches its configured bound, the oldest unfinalized executed ticket becomes `ACTION_REQUIRED` with reason `FINALIZATION_BACKLOG_LIMIT`; its already observed execution result is not silently retried.
+
 Timestamp-nonce allocation is unique only within the current client process. Coordinate explicit nonces when multiple processes or machines submit for the same account. For latency-sensitive paths, pass `market_id` for perp and the bytes32 `pair` for spot directly; the async order methods deliberately avoid a symbol-resolution RPC.
 
 The async client also protects urgent market-maker actions from ordinary quote traffic:

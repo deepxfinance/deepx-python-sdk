@@ -235,6 +235,101 @@ def test_recovery_same_block_keeps_one_tracker_fetch_task() -> None:
     asyncio.run(run())
 
 
+def test_finalized_reconciliation_groups_tickets_by_block() -> None:
+    class FinalizationTracker:
+        def __init__(self, pending: list[PendingTransaction[object]]) -> None:
+            self.pending_transactions = tuple(pending)
+            self.finalized: list[PendingTransaction[object]] = []
+
+        async def finalize_ancestor(
+            self,
+            pending: PendingTransaction[object],
+            finalized_hash: str,
+        ) -> None:
+            pending.mark_finalized(block_hash=finalized_hash)
+            self.finalized.append(pending)
+
+        def mark_reconciliation_required(self, *_args: object, **_kwargs: object) -> None:
+            raise AssertionError("canonical block should match")
+
+    async def run() -> None:
+        transport = _RecoveryTransport(best_number=10, finalized_number=10)
+        pending_transactions: list[PendingTransaction[object]] = []
+        for index in range(3):
+            pending: PendingTransaction[object] = PendingTransaction(
+                tx_hash=f"0xtx-{index}",
+                nonce=index,
+                cloid=index,
+            )
+            pending.mark_submitting()
+            pending.mark_submitted(node_status="ready")
+            pending.mark_in_block_success(
+                result=object(),
+                block_hash="0xblock-5",
+                extrinsic_hash=pending.tx_hash,
+            )
+            pending_transactions.append(pending)
+        tracker = FinalizationTracker(pending_transactions)
+        recovery = RecoveryTracker(
+            transport,  # type: ignore[arg-type]
+            tracker,  # type: ignore[arg-type]
+            _RecoveryEncoder(),  # type: ignore[arg-type]
+        )
+
+        await recovery._reconcile_finalized("0xblock-10", 10)
+
+        assert tracker.finalized == pending_transactions
+        assert transport.request_methods.count("chain_getHeader") == 1
+        assert transport.request_methods.count("chain_getBlockHash") == 1
+
+    asyncio.run(run())
+
+
+def test_watchdog_times_out_stalled_iteration_and_restarts_scan_transport() -> None:
+    class HangingTransport(_RecoveryTransport):
+        def __init__(self) -> None:
+            super().__init__()
+            self.restart_calls = 0
+            self.never = asyncio.Event()
+
+        async def request(self, method: str, params: list[object]) -> object:
+            if method == "chain_getBlockHash":
+                await self.never.wait()
+            return await super().request(method, params)
+
+        async def force_reconnect(self, _reason: str) -> None:
+            self.restart_calls += 1
+
+    async def run() -> None:
+        transport = HangingTransport()
+        tracker = SimpleNamespace(pending_transactions=(object(),))
+        recovery = RecoveryTracker(
+            transport,  # type: ignore[arg-type]
+            tracker,  # type: ignore[arg-type]
+            _RecoveryEncoder(),  # type: ignore[arg-type]
+            config=RecoveryConfig(
+                watchdog_interval_s=0.001,
+                iteration_timeout_s=0.005,
+                no_progress_timeout_s=0.005,
+            ),
+        )
+        task = asyncio.create_task(recovery._watchdog_loop())
+        for _ in range(100):
+            if transport.restart_calls:
+                break
+            await asyncio.sleep(0.001)
+
+        health = recovery.health_snapshot()
+        assert transport.restart_calls == 1
+        assert health["consecutive_failures"] >= 1
+        assert health["last_error"] == "TimeoutError"
+        recovery._closed = True
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+    asyncio.run(run())
+
+
 class _ReconnectSocket:
     def __init__(self) -> None:
         self.inbound: asyncio.Queue[BaseException] = asyncio.Queue()

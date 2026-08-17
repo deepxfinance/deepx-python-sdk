@@ -47,6 +47,7 @@ def test_public_type_exports_and_alias_bases() -> None:
     assert dx.TxUpdate is not None
     assert dx.TxTimings is not None
     assert dx.TxTimeouts is not None
+    assert dx.RecoveryConfig is not None
     assert dx.OutcomeCertainty.UNKNOWN.value == "unknown"
     assert issubclass(dx.TransactionError, dx.TxError)
     assert issubclass(dx.InclusionTimeout, dx.TxError)

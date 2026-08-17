@@ -94,6 +94,7 @@ class TransactionError(TxError):
         invalid_reason: str | None = None,
         slot_duration_ms: int | None = None,
         elapsed_slots: int | None = None,
+        details: Mapping[str, Any] | None = None,
     ) -> None:
         super().__init__()
         self.code = code
@@ -111,6 +112,7 @@ class TransactionError(TxError):
         self.invalid_reason = invalid_reason
         self.slot_duration_ms = slot_duration_ms
         self.elapsed_slots = elapsed_slots
+        self.details = dict(details) if details is not None else None
 
     def to_dict(self) -> dict[str, Any]:
         details: dict[str, Any] = {
@@ -136,6 +138,8 @@ class TransactionError(TxError):
             details["cause"] = _safe_render(
                 self.cause.args[0] if len(self.cause.args) == 1 else self.cause
             )
+        if self.details is not None:
+            details["details"] = _safe_render(self.details)
         return _safe_render(details)
 
     def __str__(self) -> str:

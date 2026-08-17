@@ -55,6 +55,7 @@ from ._types import (
 )
 from .api import ApiClient, AsyncApiClient
 from .async_client import AsyncChainClient
+from ._async_recovery import RecoveryConfig
 from .bridge import *  # noqa: F401,F403
 from .bridge import __all__ as _bridge_all
 from .client import ChainClient
@@ -125,6 +126,7 @@ __all__ = [
     "PlaceOrderResult",
     "PositionUpdatedResult",
     "ReconciliationRequired",
+    "RecoveryConfig",
     "RecoveryDiagnostics",
     "RESTError",
     "ReplacementUnsupported",

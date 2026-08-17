@@ -9,7 +9,11 @@ from typing import Any
 import pytest
 
 import deepx_sdk._async_transport as transport_module
-from deepx_sdk._async_transport import AsyncRpcTransport, ConnectionState
+from deepx_sdk._async_transport import (
+    AsyncRpcTransport,
+    ConnectionState,
+    TransportRequestError,
+)
 from deepx_sdk._errors import RPCError
 
 
@@ -132,6 +136,46 @@ def test_transport_routes_out_of_order_responses() -> None:
 
         assert await first == "A"
         assert await second == "B"
+        await transport.close()
+
+    asyncio.run(run())
+
+
+def test_request_timeout_disconnects_half_open_socket_and_reconnects() -> None:
+    async def run() -> None:
+        primary = FakeSocket()
+        backup = FakeSocket()
+
+        async def connect_factory(url: str, **_kwargs: object) -> FakeSocket:
+            return primary if url == "ws://primary.test" else backup
+
+        transport = AsyncRpcTransport(
+            ["ws://primary.test", "ws://backup.test"],
+            connect_factory=connect_factory,
+            auto_reconnect=True,
+            reconnect_initial_ms=0,
+            reconnect_max_ms=0,
+            reconnect_jitter=lambda delay: delay,
+            request_timeout_s=0.01,
+        )
+        await transport.connect()
+
+        with pytest.raises(TransportRequestError) as exc_info:
+            await transport.request("chain_getBlock", ["0xdead"])
+
+        assert exc_info.value.may_have_been_sent is True
+        assert "timed out" in str(exc_info.value)
+        assert transport._requests == {}
+        for _ in range(100):
+            if (
+                transport.state is ConnectionState.CONNECTED
+                and transport.endpoint == "ws://backup.test"
+            ):
+                break
+            await asyncio.sleep(0)
+        assert transport.state is ConnectionState.CONNECTED
+        assert transport.endpoint == "ws://backup.test"
+        assert primary.close_calls == 1
         await transport.close()
 
     asyncio.run(run())

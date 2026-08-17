@@ -116,6 +116,25 @@ class FakeTracker:
             None,
         )
 
+    def mark_reconciliation_required(
+        self,
+        pending: PendingTransaction[Any],
+        **_kwargs: object,
+    ) -> None:
+        pending.mark_reconciliation_required(
+            TransactionError(
+                code="RECONCILIATION_REQUIRED",
+                stage=TxStage.RECOVERY,
+                tx_hash=pending.tx_hash,
+                nonce=pending.nonce,
+                elapsed_ms=0,
+                certainty=OutcomeCertainty.INCLUDED,
+                retryable=False,
+                suggested_action="Reconcile finalization externally.",
+                pending=pending,
+            )
+        )
+
     async def submit(
         self,
         *,
@@ -1165,6 +1184,118 @@ def test_pool_backpressure_happens_before_encoding_and_waits_for_capacity() -> N
             extrinsic_hash=first.tx_hash,
         )
         await asyncio.wait_for(writable, timeout=0.1)
+        await client.close()
+
+    asyncio.run(run())
+
+
+def test_executed_transactions_do_not_exhaust_submission_capacity() -> None:
+    async def run() -> None:
+        components, factory, _factory_calls = fake_component_bundle()
+        client = AsyncChainClient(
+            substrate_ws="ws://node.test",
+            private_key="0x" + "11" * 32,
+            subaccount="0x" + "22" * 20,
+            max_tracked_transactions=1,
+            max_pool_transactions_per_account=1,
+            max_outbound_queue=1,
+            component_factory=factory,
+        )
+        await client.connect()
+        first = await client.perp_market.place_order(
+            market_id=3,
+            side="buy",
+            size=10,
+            price=20,
+        )
+        first.mark_in_block_success(
+            result=object(),
+            block_hash="0xblock",
+            extrinsic_hash=first.tx_hash,
+        )
+
+        health = client.health_snapshot()
+        assert health["capacity"]["tracked_count"] == 0
+        assert health["capacity"]["finalization_count"] == 1
+
+        second = await client.perp_market.place_order(
+            market_id=3,
+            side="sell",
+            size=11,
+            price=21,
+        )
+        with pytest.raises(ClientBackpressure) as caught:
+            await client.perp_market.place_order(
+                market_id=3,
+                side="buy",
+                size=12,
+                price=22,
+            )
+        details = caught.value.to_dict()["details"]
+        assert details["limiting_capacity"] == ["tracked", "pool"]
+        assert details["capacity"]["tracked_count"] == 1
+
+        first.mark_retracted()
+        health = client.health_snapshot()
+        assert health["capacity"]["tracked_count"] == 2
+        assert health["capacity"]["pool_count"] == 2
+        assert health["capacity"]["finalization_count"] == 0
+        second.mark_in_block_success(
+            result=object(),
+            block_hash="0xblock-2",
+            extrinsic_hash=second.tx_hash,
+        )
+        await client.close()
+
+    asyncio.run(run())
+
+
+def test_finalization_backlog_is_bounded_without_blocking_submission() -> None:
+    async def run() -> None:
+        _components, factory, _factory_calls = fake_component_bundle()
+        client = AsyncChainClient(
+            substrate_ws="ws://node.test",
+            private_key="0x" + "11" * 32,
+            subaccount="0x" + "22" * 20,
+            max_tracked_transactions=1,
+            max_finalization_transactions=1,
+            max_pool_transactions_per_account=1,
+            component_factory=factory,
+        )
+        await client.connect()
+        first = await client.perp_market.place_order(
+            market_id=3,
+            side="buy",
+            size=10,
+            price=20,
+        )
+        first.mark_in_block_success(
+            result=object(),
+            block_hash="0xblock-1",
+            extrinsic_hash=first.tx_hash,
+        )
+        second = await client.perp_market.place_order(
+            market_id=3,
+            side="sell",
+            size=11,
+            price=21,
+        )
+        second.mark_in_block_success(
+            result=object(),
+            block_hash="0xblock-2",
+            extrinsic_hash=second.tx_hash,
+        )
+
+        assert first.status is TxStatus.RECONCILIATION_REQUIRED
+        assert second.status is TxStatus.IN_BLOCK_SUCCESS
+        assert client.health_snapshot()["capacity"]["finalization_count"] == 1
+        third = await client.perp_market.place_order(
+            market_id=3,
+            side="buy",
+            size=12,
+            price=22,
+        )
+        assert third.status is TxStatus.SUBMITTED
         await client.close()
 
     asyncio.run(run())
