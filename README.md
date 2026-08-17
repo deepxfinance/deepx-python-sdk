@@ -320,10 +320,13 @@ client = dx.AsyncChainClient(
     max_finalization_transactions=4_096,
     recovery_config=dx.RecoveryConfig(
         iteration_timeout_s=30,
+        lock_wait_timeout_s=30,
         no_progress_timeout_s=60,
     ),
 )
 ```
+
+The watchdog reports lock contention separately as `last_error_phase="lock_wait"`; only a timeout after it owns the recovery lock is treated as a stalled RPC/scan and may rebuild the scan transport. Best-head catch-up releases the lock after each bounded batch and yields to finalized-head recovery.
 
 If the finalization backlog itself reaches its configured bound, the oldest unfinalized executed ticket becomes `ACTION_REQUIRED` with reason `FINALIZATION_BACKLOG_LIMIT`; its already observed execution result is not silently retried.
 
