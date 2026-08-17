@@ -330,6 +330,101 @@ def test_watchdog_times_out_stalled_iteration_and_restarts_scan_transport() -> N
     asyncio.run(run())
 
 
+def test_watchdog_lock_wait_timeout_does_not_restart_transport() -> None:
+    class RestartTrackingTransport(_RecoveryTransport):
+        def __init__(self) -> None:
+            super().__init__()
+            self.restart_calls = 0
+
+        async def force_reconnect(self, _reason: str) -> None:
+            self.restart_calls += 1
+
+    async def run() -> None:
+        transport = RestartTrackingTransport()
+        tracker = SimpleNamespace(pending_transactions=(object(),))
+        recovery = RecoveryTracker(
+            transport,  # type: ignore[arg-type]
+            tracker,  # type: ignore[arg-type]
+            _RecoveryEncoder(),  # type: ignore[arg-type]
+            config=RecoveryConfig(
+                watchdog_interval_s=0.001,
+                lock_wait_timeout_s=0.005,
+                iteration_timeout_s=0.005,
+                no_progress_timeout_s=0.005,
+            ),
+        )
+        await recovery._recovery_lock.acquire()
+        task = asyncio.create_task(recovery._watchdog_loop())
+        for _ in range(100):
+            if recovery.health_snapshot()["lock_wait_timeouts"]:
+                break
+            await asyncio.sleep(0.001)
+
+        health = recovery.health_snapshot()
+        assert transport.restart_calls == 0
+        assert health["lock_wait_timeouts"] == 1
+        assert health["last_error"] == "RecoveryLockTimeout"
+        assert health["last_error_phase"] == "lock_wait"
+        recovery._recovery_lock.release()
+        recovery._closed = True
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+    asyncio.run(run())
+
+
+def test_best_scan_releases_lock_per_batch_and_yields_to_finalized() -> None:
+    async def run() -> None:
+        transport = _RecoveryTransport(best_number=6, finalized_number=5)
+        tracker = SimpleNamespace(pending_transactions=())
+        recovery = RecoveryTracker(
+            transport,  # type: ignore[arg-type]
+            tracker,  # type: ignore[arg-type]
+            _RecoveryEncoder(),  # type: ignore[arg-type]
+            config=RecoveryConfig(
+                scan_concurrency=2,
+                max_blocks=100,
+                watchdog_interval_s=3600,
+            ),
+        )
+        recovery._last_best_number = 0
+        recovery._last_finalized_number = 0
+        recovery._last_finalized_scan_number = 0
+        sequence: list[str] = []
+        first_best_started = asyncio.Event()
+        release_first_best = asyncio.Event()
+
+        async def scan_best(start: int, end: int) -> None:
+            assert end - start + 1 <= 2
+            sequence.append(f"best:{start}-{end}")
+            if not first_best_started.is_set():
+                first_best_started.set()
+                await release_first_best.wait()
+            recovery._last_best_number = end
+            recovery._last_best_hash = f"0xblock-{end}"
+
+        async def scan_finalized(end: int) -> None:
+            sequence.append(f"finalized:{end}")
+            recovery._last_finalized_scan_number = end
+
+        recovery._scan_best_chain = scan_best  # type: ignore[method-assign]
+        recovery._scan_finalized_chain = scan_finalized  # type: ignore[method-assign]
+
+        await recovery._handle_new_head({"number": hex(6)})
+        await first_best_started.wait()
+        await recovery._handle_finalized_head({"number": hex(5)})
+        release_first_best.set()
+        await _wait_until(lambda: recovery._last_finalized_number == 5)
+        await _wait_until(lambda: recovery._last_best_number == 6)
+
+        assert sequence[0] == "best:1-2"
+        assert sequence.index("finalized:2") < sequence.index("best:3-4")
+        assert sequence[-1] == "best:5-6"
+        recovery._closed = True
+
+    asyncio.run(run())
+
+
 class _ReconnectSocket:
     def __init__(self) -> None:
         self.inbound: asyncio.Queue[BaseException] = asyncio.Queue()

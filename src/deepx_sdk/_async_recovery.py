@@ -43,6 +43,7 @@ class RecoveryConfig:
     stale_ms: int = 60_000
     scan_concurrency: int = 8
     iteration_timeout_s: float = 30.0
+    lock_wait_timeout_s: float = 30.0
     no_progress_timeout_s: float = 60.0
 
 
@@ -67,11 +68,15 @@ class RecoveryTracker:
             raise ValueError("Recovery scan_concurrency must be at least 1.")
         if self._config.iteration_timeout_s <= 0:
             raise ValueError("Recovery iteration_timeout_s must be positive.")
+        if self._config.lock_wait_timeout_s <= 0:
+            raise ValueError("Recovery lock_wait_timeout_s must be positive.")
         if self._config.no_progress_timeout_s <= 0:
             raise ValueError("Recovery no_progress_timeout_s must be positive.")
         self._started = False
         self._closed = False
         self._recovery_lock = asyncio.Lock()
+        self._finalized_idle = asyncio.Event()
+        self._finalized_idle.set()
         self._runtime_refresh_lock = asyncio.Lock()
         self._subscriptions: dict[str, str] = {}
         self._last_best_number: int | None = None
@@ -90,7 +95,10 @@ class RecoveryTracker:
         self._last_recovery_success_at: float | None = None
         self._last_recovery_success_unix_ms: int | None = None
         self._last_recovery_error: str | None = None
+        self._last_recovery_error_phase: str | None = None
         self._consecutive_recovery_failures = 0
+        self._recovery_lock_wait_timeouts = 0
+        self._last_recovery_lock_wait_ms: int | None = None
         self._last_forced_reconnect_at: float | None = None
 
     async def start(self) -> None:
@@ -156,6 +164,9 @@ class RecoveryTracker:
             "last_success_unix_ms": self._last_recovery_success_unix_ms,
             "consecutive_failures": self._consecutive_recovery_failures,
             "last_error": self._last_recovery_error,
+            "last_error_phase": self._last_recovery_error_phase,
+            "lock_wait_timeouts": self._recovery_lock_wait_timeouts,
+            "last_lock_wait_ms": self._last_recovery_lock_wait_ms,
             "head_transport": transport_health(self._transport),
             "scan_transport": transport_health(self._scan_transport),
             "pool_transport": transport_health(self._pool_transport),
@@ -165,11 +176,24 @@ class RecoveryTracker:
         self._last_recovery_success_at = time.monotonic()
         self._last_recovery_success_unix_ms = int(time.time() * 1_000)
         self._last_recovery_error = None
+        self._last_recovery_error_phase = None
         self._consecutive_recovery_failures = 0
 
-    def _record_recovery_failure(self, error: BaseException) -> None:
+    def _record_recovery_failure(
+        self,
+        error: BaseException,
+        *,
+        phase: str = "iteration",
+    ) -> None:
         self._consecutive_recovery_failures += 1
         self._last_recovery_error = type(error).__name__
+        self._last_recovery_error_phase = phase
+
+    def _record_lock_wait_timeout(self, elapsed_ms: int) -> None:
+        self._recovery_lock_wait_timeouts += 1
+        self._last_recovery_lock_wait_ms = elapsed_ms
+        self._last_recovery_error = "RecoveryLockTimeout"
+        self._last_recovery_error_phase = "lock_wait"
 
     async def _restart_stalled_scan_transport(self) -> None:
         now = time.monotonic()
@@ -741,14 +765,33 @@ class RecoveryTracker:
                 and not self._tracker.pending_transactions
             ):
                 continue  # healthy and nothing to reconcile
+            lock_started = time.monotonic()
             try:
-                async with asyncio.timeout(self._config.iteration_timeout_s):
-                    await self._watchdog_iteration(silent_for)
-                self._record_recovery_success()
+                async with asyncio.timeout(self._config.lock_wait_timeout_s):
+                    await self._recovery_lock.acquire()
+            except asyncio.CancelledError:
+                raise
+            except TimeoutError:
+                elapsed_ms = int((time.monotonic() - lock_started) * 1_000)
+                self._record_lock_wait_timeout(elapsed_ms)
+                logger.warning(
+                    "Recovery watchdog lock wait timed out after %dms; "
+                    "another recovery scan still owns the lock",
+                    elapsed_ms,
+                )
+                continue
+
+            try:
+                try:
+                    async with asyncio.timeout(self._config.iteration_timeout_s):
+                        await self._watchdog_iteration(silent_for)
+                    self._record_recovery_success()
+                finally:
+                    self._recovery_lock.release()
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
-                self._record_recovery_failure(exc)
+                self._record_recovery_failure(exc, phase="iteration")
                 logger.exception("Recovery watchdog iteration failed")
                 try:
                     await self._restart_stalled_scan_transport()
@@ -759,43 +802,42 @@ class RecoveryTracker:
                     logger.exception("Recovery scan transport restart failed")
 
     async def _watchdog_iteration(self, silent_for: float) -> None:
-        async with self._recovery_lock:
-            if self._closed:
-                return
-            current_hash, current_number = await self._read_best_head()
-            previous = self._last_best_number
-            # The subscription is dead when it stayed silent for the whole
-            # liveness window while the chain moved past the last head it
-            # delivered. A watchdog scan catching up must not mask this.
-            last_head_number = self._last_head_number
-            subscription_dead = (
-                silent_for >= self._config.subscription_liveness_s
-                and last_head_number is not None
-                and current_number > last_head_number
+        if self._closed:
+            return
+        current_hash, current_number = await self._read_best_head()
+        previous = self._last_best_number
+        # The subscription is dead when it stayed silent for the whole
+        # liveness window while the chain moved past the last head it
+        # delivered. A watchdog scan catching up must not mask this.
+        last_head_number = self._last_head_number
+        subscription_dead = (
+            silent_for >= self._config.subscription_liveness_s
+            and last_head_number is not None
+            and current_number > last_head_number
+        )
+        if subscription_dead:
+            logger.warning(
+                "Heads subscription silent for %.1fs while the chain "
+                "advanced from %d to %d; re-subscribing",
+                silent_for,
+                last_head_number,
+                current_number,
             )
-            if subscription_dead:
-                logger.warning(
-                    "Heads subscription silent for %.1fs while the chain "
-                    "advanced from %d to %d; re-subscribing",
-                    silent_for,
-                    last_head_number,
-                    current_number,
-                )
-                await self._subscribe_all()
-                self._last_head_at = time.monotonic()
-                self._last_head_number = current_number
-            if previous is not None and current_number > previous:
-                await self._scan_best_chain(previous + 1, current_number)
-                self._last_best_hash = current_hash
-                self._last_best_number = current_number
-            finalized_hash, finalized_number = await self._read_finalized_head()
-            await self._scan_finalized_chain(finalized_number)
-            self._last_finalized_hash = finalized_hash
-            self._last_finalized_number = finalized_number
-            await self._reconcile_finalized(
-                finalized_hash,
-                finalized_number,
-            )
+            await self._subscribe_all()
+            self._last_head_at = time.monotonic()
+            self._last_head_number = current_number
+        if previous is not None and current_number > previous:
+            await self._scan_best_chain(previous + 1, current_number)
+            self._last_best_hash = current_hash
+            self._last_best_number = current_number
+        finalized_hash, finalized_number = await self._read_finalized_head()
+        await self._scan_finalized_chain(finalized_number)
+        self._last_finalized_hash = finalized_hash
+        self._last_finalized_number = finalized_number
+        await self._reconcile_finalized(
+            finalized_hash,
+            finalized_number,
+        )
 
     async def _handle_new_head(self, update: object) -> None:
         # Must return fast: the transport drops the subscription when its
@@ -817,13 +859,19 @@ class RecoveryTracker:
             )
 
     async def _drain_best_scans(self) -> None:
-        # Coalesce bursts of heads into as few catch-up scans as possible:
-        # re-check after each scan whether newer heads arrived in the meantime.
+        # Process one bounded batch per lock acquisition. A fast chain can
+        # move the target forever; holding the lock while chasing that moving
+        # target would starve finalized recovery and the watchdog.
+        failed = False
         try:
-            async with self._recovery_lock:
-                if self._closed:
-                    return
-                while not self._closed:
+            while not self._closed:
+                # Finalized evidence has priority over speculative best-head
+                # catch-up. The finalized task clears this event before it
+                # starts waiting for the shared cursor lock.
+                await self._finalized_idle.wait()
+                async with self._recovery_lock:
+                    if self._closed:
+                        return
                     target = self._pending_best_number
                     previous = self._last_best_number
                     if target is None or (
@@ -835,13 +883,41 @@ class RecoveryTracker:
                         self._last_best_number = target
                         self._last_best_hash = await self._block_hash(target)
                     else:
-                        await self._scan_best_chain(previous + 1, target)
+                        gap = target - previous
+                        batch_target = (
+                            target
+                            if gap > self._config.max_blocks
+                            else min(
+                                target,
+                                previous + self._config.scan_concurrency,
+                            )
+                        )
+                        await self._scan_best_chain(
+                            previous + 1,
+                            batch_target,
+                        )
                     self._record_recovery_success()
+                await asyncio.sleep(0)
         except asyncio.CancelledError:
+            failed = True
             raise
         except Exception as exc:
+            failed = True
             self._record_recovery_failure(exc)
             logger.exception("Recovery best-head scan failed")
+        finally:
+            target = self._pending_best_number
+            previous = self._last_best_number
+            if (
+                not failed
+                and not self._closed
+                and target is not None
+                and (previous is None or target > previous)
+            ):
+                self._scan_task = asyncio.create_task(
+                    self._drain_best_scans(),
+                    name="deepx-recovery-best-scan",
+                )
 
     async def _handle_finalized_head(self, update: object) -> None:
         # Finalized heads can arrive as quickly as best heads. Keep this
@@ -853,6 +929,7 @@ class RecoveryTracker:
             self._pending_finalized_number or number,
             number,
         )
+        self._finalized_idle.clear()
         if self._finalized_scan_task is None or self._finalized_scan_task.done():
             self._finalized_scan_task = asyncio.create_task(
                 self._drain_finalized_scans(),
@@ -860,11 +937,12 @@ class RecoveryTracker:
             )
 
     async def _drain_finalized_scans(self) -> None:
+        failed = False
         try:
-            async with self._recovery_lock:
-                if self._closed:
-                    return
-                while not self._closed:
+            while not self._closed:
+                async with self._recovery_lock:
+                    if self._closed:
+                        return
                     target = self._pending_finalized_number
                     previous = self._last_finalized_number
                     if target is None or (
@@ -872,17 +950,44 @@ class RecoveryTracker:
                     ):
                         self._record_recovery_success()
                         return
-                    block_hash = await self._block_hash(target)
-                    await self._scan_finalized_chain(target)
+                    batch_target = (
+                        target
+                        if previous is None
+                        or target - previous > self._config.max_blocks
+                        else min(
+                            target,
+                            previous + self._config.scan_concurrency,
+                        )
+                    )
+                    block_hash = await self._block_hash(batch_target)
+                    await self._scan_finalized_chain(batch_target)
                     self._last_finalized_hash = block_hash
-                    self._last_finalized_number = target
-                    await self._reconcile_finalized(block_hash, target)
+                    self._last_finalized_number = batch_target
+                    await self._reconcile_finalized(block_hash, batch_target)
                     self._record_recovery_success()
+                await asyncio.sleep(0)
         except asyncio.CancelledError:
+            failed = True
             raise
         except Exception as exc:
+            failed = True
             self._record_recovery_failure(exc)
             logger.exception("Recovery finalized-head scan failed")
+        finally:
+            target = self._pending_finalized_number
+            previous = self._last_finalized_number
+            if (
+                not failed
+                and not self._closed
+                and target is not None
+                and (previous is None or target > previous)
+            ):
+                self._finalized_scan_task = asyncio.create_task(
+                    self._drain_finalized_scans(),
+                    name="deepx-recovery-finalized-scan",
+                )
+            else:
+                self._finalized_idle.set()
 
     async def _reconcile_finalized(
         self,
