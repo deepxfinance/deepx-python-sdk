@@ -332,6 +332,67 @@ If the finalization backlog itself reaches its configured bound, the oldest unfi
 
 Timestamp-nonce allocation is unique only within the current client process. Coordinate explicit nonces when multiple processes or machines submit for the same account. For latency-sensitive paths, pass `market_id` for perp and the bytes32 `pair` for spot directly; the async order methods deliberately avoid a symbol-resolution RPC.
 
+### Getting a spot pair
+
+A spot `pair` is the market's bytes32 identifier, not a value that should be derived locally from the symbol. Query the market API by symbol and read the identifier returned by the deployment:
+
+```python
+import deepx_sdk as dx
+
+api = dx.ApiClient()
+response = api.v1.spot.market(symbol="ETH-USDC")
+market = response.get("data", response)
+
+# The resolver accepts these response-field aliases for compatibility across
+# API deployments. Current deployments normally return one of them.
+pair = next(
+    (
+        market[name]
+        for name in (
+            "pair",
+            "pairId",
+            "pair_id",
+            "marketId",
+            "market_id",
+            "id",
+        )
+        if market.get(name) not in (None, "")
+    ),
+    None,
+)
+if pair is None:
+    raise RuntimeError("spot market response does not contain a pair identifier")
+
+print(pair)
+```
+
+Use `api.v1.spot.markets()` to retrieve all listed spot markets. This is a REST/indexer lookup; the SDK does not currently expose a chain RPC that enumerates every spot pair. The on-chain `get_spot_market_spec()` view requires an existing pair as input.
+
+Synchronous `ChainClient` methods can resolve the pair automatically through the market API, so callers may pass a symbol instead:
+
+```python
+spec = chain.spot_market.get_spot_market_spec(symbol="ETH-USDC")
+ticket = chain.spot_market.submit_order(
+    symbol="ETH-USDC",
+    side="buy",
+    quote_amount=100_000_000,
+    base_amount=50_000_000_000_000_000,
+)
+```
+
+`ChainClient` caches the market mapping. Call `chain.preload_markets()` during startup if you want to load it before the first order, or `chain.refresh_markets()` after a market-listing change.
+
+`AsyncChainClient` deliberately does not perform REST symbol resolution on the submission hot path. Resolve and cache the pair during bot startup, then pass it directly:
+
+```python
+pending = await async_chain.spot_market.place_order(
+    pair=pair,
+    side="buy",
+    quote_amount=100_000_000,
+    base_amount=50_000_000_000_000_000,
+)
+```
+
 The async client also protects urgent market-maker actions from ordinary quote traffic:
 
 - `node_pool_limit_per_account` describes the connected node's per-account transaction-pool limit and defaults to 50.
