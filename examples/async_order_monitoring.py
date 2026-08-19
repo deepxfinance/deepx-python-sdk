@@ -5,7 +5,7 @@ This is the advanced operations example. For the normal ticket workflow, see
 
 Configuration comes from ``examples/.env`` (see ``examples/.env.example``);
 plain exported environment variables also work and take precedence:
-    PRIVATE_KEY, SUBACCOUNT, SUBSTRATE_WS, MARKET_ID, SIDE, SIZE, PRICE, CLOID
+    PRIVATE_KEY, SUBACCOUNT, SUBSTRATE_WS, MARKET_ID, SIDE, SIZE, PRICE, NONCE_MS
 
 Run with:
     python examples/async_order_monitoring.py
@@ -26,13 +26,9 @@ load()
 import deepx_sdk as dx
 
 
-def _cloid() -> int:
-    raw = os.environ.get("CLOID", "").strip()
-    if raw:
-        return int(raw)
-    import random
-
-    return random.randint(2**31, 2**32 - 1)
+def _nonce_ms() -> int | None:
+    raw = os.environ.get("NONCE_MS", "").strip()
+    return int(raw) if raw else None
 
 
 def _required_env(name: str) -> str:
@@ -78,7 +74,7 @@ async def main() -> None:
             "side": _required_env("SIDE"),
             "size": int(_required_env("SIZE")),
             "price": int(_required_env("PRICE")),
-            "cloid": _cloid(),
+            "nonce_ms": _nonce_ms(),
         }
         async with dx.AsyncChainClient(
             substrate_ws=os.environ.get("SUBSTRATE_WS", ""),
@@ -89,14 +85,13 @@ async def main() -> None:
         ) as client:
             ticket = await client.perp_market.place_order(**order)
             tracked_by_hash = client.transactions.get(ticket.tx_hash)
-            tracked_by_cloid = client.transactions.get_by_cloid(order["cloid"])
             print(
                 json.dumps(
                     {
                         "phase": "accepted",
                         "state": ticket.state.value,
                         "tracked_by_hash": tracked_by_hash is ticket,
-                        "tracked_by_cloid": tracked_by_cloid is ticket,
+                        "nonce": ticket.nonce,
                         "snapshot": ticket.snapshot().to_dict(),
                     },
                     sort_keys=True,
@@ -158,14 +153,10 @@ async def main() -> None:
                             if error_ticket is not None
                             else None
                         ),
-                        "cloid": getattr(exc, "cloid", None)
-                        or (
-                            error_ticket.cloid
-                            if error_ticket is not None
-                            else None
-                        ),
+                        "nonce": getattr(exc, "nonce", None)
+                        or (error_ticket.nonce if error_ticket is not None else None),
                         "message": (
-                            "Outcome is uncertain. Reconcile by tx_hash/cloid; "
+                            "Outcome is uncertain. Reconcile by tx_hash/nonce; "
                             "do not blindly retry."
                         ),
                     },

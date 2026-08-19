@@ -21,7 +21,7 @@ from ._types import (
 )
 
 
-def _spot_slippage_u8(value: int) -> int:
+def _spot_slippage_bps(value: int) -> int:
     # Chain runtime 187+: a market order's slippage is validated on-chain
     # against the pair's max_deviation_bps (default 500, per-pair sudo
     # config, hard bound 10000) instead of the old fixed 0-99 percentage.
@@ -47,7 +47,10 @@ def _spot_place_params(
 ) -> dict:
     # On-chain `place_order` takes a single `params: SpotPlaceParams` arg.
     # `order_type` shares the perp OrderType enum: Limit(TimeInForce) |
-    # Market(Option<u64> slippage); `cloid` is an optional client order id.
+    # Market(Option<u64> slippage). The devnet runtime derives the system
+    # order id from the timestamp nonce; `cloid` remains accepted for source
+    # compatibility but is no longer part of the on-chain params.
+    _ = cloid
     return {
         "params": {
             "subaccount": normalize_address(subaccount),
@@ -58,7 +61,6 @@ def _spot_place_params(
             "order_type": order_type,
             "post_only": post_only,
             "reduce_only": bool(reduce_only),
-            "cloid": None if cloid is None else int(cloid),
         }
     }
 
@@ -316,7 +318,7 @@ def subaccount_place_market_order_buy_b_with_price(
             is_buy=True,
             quote_amount=quote_amount,
             base_amount=base_amount,
-            order_type={"Market": _spot_slippage_u8(slippage)},
+            order_type={"Market": _spot_slippage_bps(slippage)},
             post_only="None",
             reduce_only=reduce_only,
             cloid=cloid,
@@ -405,7 +407,7 @@ def subaccount_place_market_order_sell_b_with_price(
             is_buy=False,
             quote_amount=quote_amount,
             base_amount=base_amount,
-            order_type={"Market": _spot_slippage_u8(slippage)},
+            order_type={"Market": _spot_slippage_bps(slippage)},
             post_only="None",
             reduce_only=reduce_only,
             cloid=cloid,
@@ -501,7 +503,7 @@ def modify_spot_order(
 def _spot_order_type_param(value: int, slippage: Optional[int]) -> object:
     mapping = {
         0: lambda: {"Limit": "GTC"},
-        1: lambda: {"Market": None if slippage is None else _spot_slippage_u8(slippage)},
+        1: lambda: {"Market": None if slippage is None else _spot_slippage_bps(slippage)},
         3: lambda: {"Limit": "IOC"},
     }
     try:
@@ -760,8 +762,7 @@ def user_active_spot_orders(
         [normalize_address(user), pair_bytes],
     )
     raw = evm_call(evm_rpc_url, precompile_address, data)
-    (orders,) = decode_abi([f"{_SPOT_ORDER_TUPLE}[]"], raw)
-    return [_decode_spot_order(order) for order in orders]
+    return [_decode_spot_order(order) for order in _decode_spot_orders_tuple(raw)]
 
 
 def get_spot_market_spec(
@@ -780,8 +781,20 @@ def get_spot_market_spec(
     )
 
 
-_SPOT_ORDER_TUPLE = "(bytes32,uint256,address,uint256,uint256,uint256,uint32,uint8,bool,uint8,uint8)"
+_SPOT_ORDER_TUPLE = "(bytes32,uint64,address,uint256,uint256,uint256,uint32,uint8,bool,uint8,uint8)"
+# `id` was U256 before the chain moved spot order ids to u64.
+_SPOT_ORDER_TUPLE_LEGACY = "(bytes32,uint256,address,uint256,uint256,uint256,uint32,uint8,bool,uint8,uint8)"
 _SPOT_MARKET_SPEC_TUPLE = "(uint128,uint128,uint128)"
+
+
+def _decode_spot_orders_tuple(raw: bytes) -> tuple:
+    for tuple_type in (_SPOT_ORDER_TUPLE, _SPOT_ORDER_TUPLE_LEGACY):
+        try:
+            (orders,) = decode_abi([f"{tuple_type}[]"], raw)
+            return orders
+        except Exception:
+            continue
+    raise RuntimeError("unable to decode userActiveSpotOrders response with supported ABI layouts")
 
 
 def _decode_spot_order(order: tuple) -> SpotOrderInfo:

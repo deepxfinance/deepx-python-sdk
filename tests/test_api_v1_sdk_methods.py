@@ -982,7 +982,7 @@ def test_api_v1_chain_tx_place_perp_order_ioc(monkeypatch: pytest.MonkeyPatch) -
     assert params["take_profit"] is None
     assert params["stop_loss"] is None
     assert params["post_only"] == "None"
-    assert params["cloid"] is None
+    assert "cloid" not in params
 
 
 def test_api_v1_chain_tx_cancel_perp_order(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1246,7 +1246,6 @@ def test_api_v1_chain_tx_order_methods_build_pallet_calls(
                     "stop_loss": None,
                     "reduce_only": False,
                     "post_only": "None",
-                    "cloid": None,
                 }
             },
         ),
@@ -1275,7 +1274,6 @@ def test_api_v1_chain_tx_order_methods_build_pallet_calls(
                     "stop_loss": None,
                     "reduce_only": False,
                     "post_only": "None",
-                    "cloid": None,
                 }
             },
         ),
@@ -1343,7 +1341,6 @@ def test_api_v1_chain_tx_order_methods_build_pallet_calls(
                     "order_type": {"Limit": "GTC"},
                     "post_only": "None",
                     "reduce_only": False,
-                    "cloid": None,
                 }
             },
         ),
@@ -1371,7 +1368,6 @@ def test_api_v1_chain_tx_order_methods_build_pallet_calls(
                     "order_type": {"Market": 9},
                     "post_only": "None",
                     "reduce_only": False,
-                    "cloid": None,
                 }
             },
         ),
@@ -1399,7 +1395,6 @@ def test_api_v1_chain_tx_order_methods_build_pallet_calls(
                     "order_type": {"Market": None},
                     "post_only": "None",
                     "reduce_only": False,
-                    "cloid": None,
                 }
             },
         ),
@@ -1452,7 +1447,7 @@ def test_api_v1_chain_spot_market_order_slippage_rejects_node_invalid_value(
             pair=_VALID_PAIR,
             quote_amount=1000,
             base_amount=1,
-            slippage=100,
+            slippage=10001,
             subaccount=_VALID_SUBACCOUNT,
             evm_rpc_url="http://rpc",
             private_key="0xpk",

@@ -217,7 +217,7 @@ result = await client.perp_market.place_order_and_wait(
     side="buy",
     size=123,
     price=456,
-    cloid=202607290001,
+    nonce_ms=202607290001,
 )
 ```
 
@@ -258,12 +258,12 @@ async def main() -> None:
             side="buy",
             size=int(os.environ["SIZE"]),
             price=int(os.environ["PRICE"]),
-            cloid=int(os.environ["CLOID"]),  # caller-managed id
+            nonce_ms=int(os.environ["NONCE_MS"]),  # timestamp-derived order id
         )
 
         # The handle is already indexed; no per-order callback is required.
         assert chain.transactions.get(ticket.tx_hash) is ticket
-        assert chain.transactions.get_by_cloid(ticket.cloid) is ticket
+        assert ticket.nonce == int(os.environ["NONCE_MS"])
         print("accepted:", ticket.state, ticket.snapshot().to_dict())
 
         executed_result = await ticket.executed()
@@ -538,16 +538,16 @@ Orders can also be placed through the REST API — it builds a signed extrinsic 
 
 The high-level `chain.perp_market.place_order(..., order_type="ioc")` dispatcher also routes to `place_perp_order_ioc`. Accepted aliases: `"ioc"`, `"I"`, `"IOC"`, `3`.
 
-All perp place methods accept an optional `cloid` (client order id, `int`) — and so do the `place_order` dispatcher and the REST `api.v1.chain_tx.place_perp_order*` methods. A cloid becomes the order's oid, so you can cancel immediately without waiting for the system oid. System order ids use `[0, 2**31 - 1]`; valid cloids use `[2**31, 2**32 - 1]`. A cloid is consumed forever once used (even after fill/cancel) — reuse is rejected with `22_76 PerpDuplicateClientOrderId`, out-of-range with `22_75 PlacePerpExceedClientOrderId`.
+On the current devnet runtime, perp order IDs are `u64` values derived from the transaction's timestamp nonce. The `nonce_ms` argument lets callers choose that timestamp explicitly (within the chain's accepted window), which is useful when correlating an order with a submitted transaction. The legacy `cloid` argument is still accepted by SDK method signatures for source compatibility, but it is not serialized and does not become the on-chain order ID.
 
 ```python
 res = chain.perp_market.place_perp_order_ioc(market_id=3, is_long=True, size=123,
-                                             price=456, cloid=2**31)
-assert res.order_id == 2**31
+                                             price=456, nonce_ms=202607290001)
+assert res.order_id == 202607290001
 chain.perp_market.cancel_order(market_id=3, order_id=res.order_id)
 ```
 
-A runnable version is in [`examples/cloid_orders.py`](examples/cloid_orders.py).
+A runnable version is in [`examples/async_orders.py`](examples/async_orders.py).
 
 ```python
 res = chain.perp_market.cancel_order(market_id=3, order_id=12345)
@@ -561,7 +561,7 @@ print(res.order_id, res.tx_hash)
 ```python
 res = chain.perp_market.modify_order(
     order_id=old_oid, market_id=3, is_long=True,
-    price=1_400_000_000, size=10**15, cloid=2**31,
+    price=1_400_000_000, size=10**15, nonce_ms=202607290002,
 )
 print(res.canceled_order_id, "->", res.order_id)
 
@@ -644,7 +644,7 @@ print(res.order_id, res.tx_hash)
 
 The high-level `chain.spot_market.place_order(..., order_type="ioc")` dispatcher also routes to `subaccount_place_order_{buy,sell}_ioc_b`. Accepted aliases: `"ioc"`, `"I"`, `"IOC"`, `3`.
 
-Spot place methods also accept an optional `cloid` (same semantics and range as perp; spot-specific errors are `20_43 PlaceSpotExceedClientOrderId` / `20_45 SpotDuplicateClientOrderId`). Note `auto_cancel` no longer exists on-chain; the kwarg is kept for compatibility but ignored.
+Spot order IDs follow the same timestamp-nonce `u64` rule. The legacy `cloid` argument remains accepted for source compatibility but is not sent to the chain. Set `nonce_ms` when a deterministic order ID is needed. Note `auto_cancel` no longer exists on-chain; the kwarg is kept for compatibility but ignored.
 
 ```python
 res = chain.spot_market.subaccount_cancel_order_buy_b(

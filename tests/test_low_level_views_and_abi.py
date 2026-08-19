@@ -276,8 +276,9 @@ def test_abi_encoders_and_normalizers() -> None:
 def test_perp_view_decoders(monkeypatch) -> None:
     owner = "0x" + "33" * 20
     pos = (3, True, 1, 2, 10, -1, 7, -2, -3, owner, 100, 90, 80)
-    active_order = (owner, 3, 1, 0, 44, 1000, 777)
-    order = (44, owner, 3, True, 1, 1000, 0, 777, 10, 0, 1, 1, 0, 100, 90)
+    order_id = 2**40 + 44
+    active_order = (owner, 3, 1, 0, order_id, 1000, 777)
+    order = (order_id, owner, 3, True, 1, 1000, 0, 777, 10, 0, 1, 1, 0, 100, 90)
 
     responses = [
         encode([f"{_perp_market._PERP_POSITION_TUPLE}[]"], [[pos]]),
@@ -305,9 +306,9 @@ def test_perp_view_decoders(monkeypatch) -> None:
     )[0].owner == owner
     assert _perp_market.user_active_orders(
         evm_rpc_url="rpc", precompile_address=ADDR, user=owner
-    )[0].order_id == 44
+    )[0].order_id == order_id
     assert _perp_market.order_info(
-        evm_rpc_url="rpc", precompile_address=ADDR, user=owner, order_id=44
+        evm_rpc_url="rpc", precompile_address=ADDR, user=owner, order_id=order_id
     ).take_profit == 100
     assert _perp_market.free_deposit_for(
         evm_rpc_url="rpc", precompile_address=ADDR, account=owner
@@ -404,7 +405,7 @@ def test_perp_runtime_value_parsers() -> None:
 
 def test_spot_lending_subaccount_system_views(monkeypatch) -> None:
     owner = "0x" + "33" * 20
-    spot_order = (bytes.fromhex("22" * 32), 1, owner, 100, 200, 3, 777, 1, True, 0, 5)
+    spot_order = (bytes.fromhex("22" * 32), 2**40 + 1, owner, 100, 200, 3, 777, 1, True, 0, 5)
     lending_pool_v3 = (1, b"USDC", 6, 10, 20, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12)
     summary = (owner, b"main")
 
@@ -510,6 +511,26 @@ def test_spot_lending_subaccount_system_views(monkeypatch) -> None:
     )
     with pytest.raises(RuntimeError, match="systemAccount decode failed"):
         _system.system_account(evm_rpc_url="rpc", precompile_address=ADDR, address=owner)
+
+
+def test_spot_order_view_accepts_legacy_u256_ids() -> None:
+    legacy_id = 2**200 + 7
+    order = (
+        bytes.fromhex("22" * 32),
+        legacy_id,
+        bytes.fromhex("33" * 20),
+        100,
+        200,
+        3,
+        777,
+        1,
+        True,
+        0,
+        5,
+    )
+    raw = encode([f"{_spot_market._SPOT_ORDER_TUPLE_LEGACY}[]"], [[order]])
+    (decoded,) = _spot_market._decode_spot_orders_tuple(raw)
+    assert decoded[1] == legacy_id
 
 
 def test_spot_cancel_and_event_parsing_paths(monkeypatch) -> None:

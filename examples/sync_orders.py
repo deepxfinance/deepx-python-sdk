@@ -2,7 +2,7 @@
 
 Configuration comes from ``examples/.env`` (see ``examples/.env.example``);
 plain exported environment variables also work and take precedence:
-    PRIVATE_KEY, SUBACCOUNT, SUBSTRATE_WS, MARKET_ID, SIDE, SIZE, PRICE, CLOID
+    PRIVATE_KEY, SUBACCOUNT, SUBSTRATE_WS, MARKET_ID, SIDE, SIZE, PRICE, NONCE_MS
 
 Run with:
     python examples/sync_orders.py
@@ -20,16 +20,6 @@ load()
 import deepx_sdk as dx
 
 
-def _cloid() -> int:
-    raw = os.environ.get("CLOID", "").strip()
-    if raw:
-        return int(raw)
-    import random
-
-    return random.randint(2**31, 2**32 - 1)
-
-
-
 def main() -> None:
     ticket: dx.SyncTransactionTicket | None = None
     try:
@@ -44,7 +34,11 @@ def main() -> None:
                 side=os.environ["SIDE"],
                 size=int(os.environ["SIZE"]),
                 price=int(os.environ["PRICE"]),
-                cloid=_cloid(),
+                nonce_ms=(
+                    int(os.environ["NONCE_MS"])
+                    if os.environ.get("NONCE_MS")
+                    else None
+                ),
             )
 
             # The node accepted the transaction; no block wait happened yet.
