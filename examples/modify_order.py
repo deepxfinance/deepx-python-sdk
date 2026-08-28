@@ -50,7 +50,7 @@ PERP_PRICE = int(Decimal("1500") * (10 ** 6))      # far below mark -> rests
 SPOT_QUOTE_AMOUNT = int(Decimal("1.5") * (10 ** 6))
 SPOT_BASE_AMOUNT = int(Decimal("0.001") * (10 ** 18))
 
-CLOID = 2**31 + (int(time.time()) % 1_000_000) * 8
+NONCE_BASE = int(time.time() * 1000)
 
 
 # ---------------------------------------------------------------------------
@@ -74,9 +74,9 @@ chain = dx.ChainClient(
 def perp_modify_price_and_size() -> None:
     placed = chain.perp_market.place_perp_order_limit(
         market_id=PERP_MARKET_ID, is_long=True, size=PERP_SIZE,
-        price=PERP_PRICE, cloid=CLOID,
+        price=PERP_PRICE, nonce_ms=NONCE_BASE,
     )
-    print(f"  placed oid={placed.order_id} (cloid)")
+    print(f"  placed oid={placed.order_id} (timestamp nonce)")
 
     res = chain.perp_market.modify_order(
         order_id=placed.order_id,
@@ -84,7 +84,7 @@ def perp_modify_price_and_size() -> None:
         is_long=True,
         size=PERP_SIZE * 2,                    # new remaining size (explicit)
         price=int(Decimal("1400") * (10 ** 6)),
-        cloid=CLOID + 1,
+        nonce_ms=NONCE_BASE + 1,
     )
     print(f"  modified: old oid={res.canceled_order_id} -> new oid={res.order_id}")
 
@@ -96,7 +96,7 @@ def perp_modify_price_and_size() -> None:
 def perp_modify_total_quantity() -> None:
     placed = chain.perp_market.place_perp_order_limit(
         market_id=PERP_MARKET_ID, is_long=True, size=PERP_SIZE,
-        price=PERP_PRICE, cloid=CLOID + 2,
+        price=PERP_PRICE, nonce_ms=NONCE_BASE + 2,
     )
     # Nothing filled yet, so new_total_quantity == the new size here. With a
     # partially filled order the SDK places (new_total - filled); passing a
@@ -107,7 +107,7 @@ def perp_modify_total_quantity() -> None:
         is_long=True,
         price=PERP_PRICE,
         new_total_quantity=PERP_SIZE * 3,
-        cloid=CLOID + 3,
+        nonce_ms=NONCE_BASE + 3,
     )
     print(f"  modified to total 0.003 ETH: new oid={res.order_id}")
 
@@ -119,7 +119,7 @@ def perp_modify_total_quantity() -> None:
 def spot_modify_price() -> None:
     placed = chain.spot_market.subaccount_place_order_buy_b(
         pair=SPOT_PAIR, quote_amount=SPOT_QUOTE_AMOUNT,
-        base_amount=SPOT_BASE_AMOUNT, cloid=CLOID + 4,
+        base_amount=SPOT_BASE_AMOUNT, nonce_ms=NONCE_BASE + 4,
     )
     res = chain.spot_market.modify_order(
         side="buy",                          # must match the old order's side
@@ -127,7 +127,7 @@ def spot_modify_price() -> None:
         pair=SPOT_PAIR,
         quote_amount=int(Decimal("1.4") * (10 ** 6)),  # 1400 USDC/ETH
         base_amount=SPOT_BASE_AMOUNT,
-        cloid=CLOID + 5,
+        nonce_ms=NONCE_BASE + 5,
     )
     print(f"  modified: old oid={res.canceled_order_id} -> new oid={res.order_id}")
 

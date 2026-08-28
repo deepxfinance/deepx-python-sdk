@@ -83,10 +83,10 @@ def _post_only_param(value: int) -> str:
         raise ValueError(f"invalid post_only: {value}") from exc
 
 
-def _spot_slippage_u8(value: int) -> int:
+def _spot_slippage_bps(value: int) -> int:
     slippage = int(value)
-    if slippage < 0 or slippage >= 100:
-        raise ValueError("spot market slippage must be between 0 and 99")
+    if slippage < 0 or slippage > 10000:
+        raise ValueError("spot market slippage must be between 0 and 10000")
     return slippage
 
 
@@ -108,7 +108,10 @@ def _spot_place_params(
 ) -> dict[str, Any]:
     # On-chain `place_order` takes a single `params: SpotPlaceParams` arg.
     # `order_type` shares the perp OrderType enum: Limit(TimeInForce) |
-    # Market(Option<u64> slippage); `cloid` is an optional client order id.
+    # Market(Option<u64> slippage). The current runtime derives the order id
+    # from the timestamp nonce; `cloid` remains source-compatible but is not
+    # serialized into the runtime params.
+    _ = cloid
     return {
         "params": {
             "subaccount": normalize_address(subaccount),
@@ -119,7 +122,6 @@ def _spot_place_params(
             "order_type": order_type,
             "post_only": post_only,
             "reduce_only": bool(reduce_only),
-            "cloid": _optional_u64(cloid),
         }
     }
 
@@ -1478,7 +1480,6 @@ class ChainTxV1Client:
                     "stop_loss": _optional_u128(stop_loss),
                     "reduce_only": bool(reduce_only),
                     "post_only": _post_only_param(post_only),
-                    "cloid": _optional_u64(cloid),
                 }
             },
         )
@@ -1910,7 +1911,7 @@ class ChainTxV1Client:
                 is_buy=True,
                 quote_amount=quote_amount,
                 base_amount=base_amount,
-                order_type={"Market": _spot_slippage_u8(slippage)},
+                order_type={"Market": _spot_slippage_bps(slippage)},
                 post_only="None",
                 reduce_only=reduce_only,
                 cloid=cloid,
@@ -2005,7 +2006,7 @@ class ChainTxV1Client:
                 is_buy=False,
                 quote_amount=quote_amount,
                 base_amount=base_amount,
-                order_type={"Market": _spot_slippage_u8(slippage)},
+                order_type={"Market": _spot_slippage_bps(slippage)},
                 post_only="None",
                 reduce_only=reduce_only,
                 cloid=cloid,

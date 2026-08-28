@@ -576,7 +576,6 @@ def test_place_order_shapes_ready_return_and_timestamp_nonces() -> None:
                         "stop_loss": None,
                         "reduce_only": False,
                         "post_only": "None",
-                        "cloid": None,
                     }
                 },
                 "nonce": 1_000_000,
@@ -596,7 +595,6 @@ def test_place_order_shapes_ready_return_and_timestamp_nonces() -> None:
                         "stop_loss": None,
                         "reduce_only": False,
                         "post_only": "None",
-                        "cloid": None,
                     }
                 },
                 "nonce": 1_000_001,
@@ -616,7 +614,6 @@ def test_place_order_shapes_ready_return_and_timestamp_nonces() -> None:
                         "stop_loss": None,
                         "reduce_only": False,
                         "post_only": "None",
-                        "cloid": 77,
                     }
                 },
                 "nonce": 1_000_005,
@@ -774,7 +771,6 @@ def test_async_spot_place_order_exact_shapes_and_decoders() -> None:
                         "order_type": {"Limit": "GTC"},
                         "post_only": "MustPostOnly",
                         "reduce_only": False,
-                        "cloid": None,
                     }
                 },
                 "nonce": 1_000_000,
@@ -792,7 +788,6 @@ def test_async_spot_place_order_exact_shapes_and_decoders() -> None:
                         "order_type": {"Limit": "GTC"},
                         "post_only": "Adaptive",
                         "reduce_only": True,
-                        "cloid": None,
                     }
                 },
                 "nonce": 1_000_001,
@@ -810,7 +805,6 @@ def test_async_spot_place_order_exact_shapes_and_decoders() -> None:
                         "order_type": {"Market": None},
                         "post_only": "None",
                         "reduce_only": True,
-                        "cloid": None,
                     }
                 },
                 "nonce": 1_000_002,
@@ -828,7 +822,6 @@ def test_async_spot_place_order_exact_shapes_and_decoders() -> None:
                         "order_type": {"Market": 9},
                         "post_only": "None",
                         "reduce_only": False,
-                        "cloid": None,
                     }
                 },
                 "nonce": 1_000_003,
@@ -846,7 +839,6 @@ def test_async_spot_place_order_exact_shapes_and_decoders() -> None:
                         "order_type": {"Limit": "IOC"},
                         "post_only": "None",
                         "reduce_only": True,
-                        "cloid": None,
                     }
                 },
                 "nonce": 1_000_004,
@@ -864,7 +856,6 @@ def test_async_spot_place_order_exact_shapes_and_decoders() -> None:
                         "order_type": {"Limit": "IOC"},
                         "post_only": "None",
                         "reduce_only": False,
-                        "cloid": 2**31,
                     }
                 },
                 "nonce": 1_000_010,

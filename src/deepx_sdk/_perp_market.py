@@ -66,7 +66,9 @@ def place_perp_order(
     # On-chain `place_order` takes a single `params: PerpPlaceParams` arg.
     # Leverage is no longer a per-order param — set it via set_global_leverage
     # / set_per_market_leverage first. `slippage` only applies to market orders
-    # (folds into OrderType::Market(Option<u64>)); `cloid` is a client order id.
+    # (folds into OrderType::Market(Option<u64>)). The current runtime derives
+    # the system order id from the timestamp nonce; `cloid` is retained in the
+    # Python signature for source compatibility but is no longer serialized.
     ev = submit_pallet_call_wait_event(
         substrate_ws=substrate_ws,
         private_key=private_key,
@@ -840,6 +842,7 @@ def _perp_place_params(
     post_only: int,
     cloid: Optional[int],
 ) -> dict:
+    _ = cloid
     return {
         "subaccount": normalize_address(subaccount),
         "market_id": int(market_id),
@@ -851,7 +854,6 @@ def _perp_place_params(
         "stop_loss": _optional_u128(stop_loss),
         "reduce_only": bool(reduce_only),
         "post_only": _post_only_param(post_only),
-        "cloid": _optional_u64(cloid),
     }
 
 
@@ -1102,14 +1104,34 @@ def order_info(
     user: str,
     order_id: int,
 ) -> PerpOrderInfo:
-    data = encode_call(
-        "orderInfo(address,uint32)",
-        ["address", "uint32"],
-        [normalize_address(user), order_id],
-    )
-    raw = evm_call(evm_rpc_url, precompile_address, data)
-    (order,) = decode_abi([_PERP_ORDER_TUPLE], raw)
-    return _decode_perp_order(order)
+    # The order_id argument widened u32 -> u64, which changes the selector.
+    # Deployments trailing that runtime still only expose the uint32 form.
+    for arg_type in ("uint64", "uint32"):
+        data = encode_call(
+            f"orderInfo(address,{arg_type})",
+            ["address", arg_type],
+            [normalize_address(user), order_id],
+        )
+        try:
+            raw = evm_call(evm_rpc_url, precompile_address, data)
+        except Exception as exc:
+            error_text = str(exc).lower()
+            selector_error = any(
+                marker in error_text
+                for marker in (
+                    "unknown selector",
+                    "function selector",
+                    "selector was not recognized",
+                    "method not found",
+                    "no matching function",
+                )
+            )
+            if arg_type == "uint64" and selector_error:
+                continue
+            raise
+        (order,) = decode_abi([_PERP_ORDER_TUPLE], raw)
+        return _decode_perp_order(order)
+    raise RuntimeError("orderInfo is not exposed by the perp precompile at this endpoint")
 
 
 def free_deposit_for(
@@ -1261,9 +1283,12 @@ _PERP_MARKET_TUPLE_V2 = (
     f"(uint16,bytes,bytes,int32,uint16,bytes,uint64,int128,uint64,uint128,uint128,uint64,"
     f"uint128,uint32,int32,{_ORDER_SPEC_TUPLE},uint128,uint128,uint128,int128,uint128,int128,int128,int128)"
 )
-_ACTIVE_ORDER_TUPLE = "(address,uint16,uint8,uint8,uint32,uint128,uint64)"
+# `order_id` widened u32 -> u64 (chain: order ids are now derived from the
+# extrinsic's millisecond timestamp nonce, so they exceed 2^32). Decoding as
+# uint64 also reads the pre-widening layout, since both occupy one ABI word.
+_ACTIVE_ORDER_TUPLE = "(address,uint16,uint8,uint8,uint64,uint128,uint64)"
 _PERP_ORDER_TUPLE = (
-    "(uint32,address,uint16,bool,uint128,uint128,uint8,uint64,uint64,uint64,uint8,uint128,uint128,uint128,uint128)"
+    "(uint64,address,uint16,bool,uint128,uint128,uint8,uint64,uint64,uint64,uint8,uint128,uint128,uint128,uint128)"
 )
 _PERP_POSITION_TUPLE = (
     "(uint16,bool,uint128,uint128,uint64,int128,uint64,int128,int128,address,uint128,uint128,uint128)"
