@@ -538,7 +538,7 @@ Orders can also be placed through the REST API — it builds a signed extrinsic 
 
 The high-level `chain.perp_market.place_order(..., order_type="ioc")` dispatcher also routes to `place_perp_order_ioc`. Accepted aliases: `"ioc"`, `"I"`, `"IOC"`, `3`.
 
-On the current devnet runtime, perp order IDs are `u64` values derived from the transaction's timestamp nonce. The `nonce_ms` argument lets callers choose that timestamp explicitly (within the chain's accepted window), which is useful when correlating an order with a submitted transaction. The legacy `cloid` argument is still accepted by SDK method signatures for source compatibility, but it is not serialized and does not become the on-chain order ID.
+On the current testnet runtime, perp order IDs are `u64` values derived from the transaction's timestamp nonce. The `nonce_ms` argument lets callers choose that timestamp explicitly (within the chain's accepted window), which is useful when correlating an order with a submitted transaction. The legacy `cloid` argument is still accepted by SDK method signatures for source compatibility, but it is not serialized and does not become the on-chain order ID.
 
 ```python
 res = chain.perp_market.place_perp_order_ioc(market_id=3, is_long=True, size=123,

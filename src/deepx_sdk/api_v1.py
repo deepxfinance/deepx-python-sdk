@@ -108,7 +108,7 @@ def _spot_place_params(
 ) -> dict[str, Any]:
     # On-chain `place_order` takes a single `params: SpotPlaceParams` arg.
     # `order_type` shares the perp OrderType enum: Limit(TimeInForce) |
-    # Market(Option<u64> slippage). The devnet runtime derives the order id
+    # Market(Option<u64> slippage). The current runtime derives the order id
     # from the timestamp nonce; `cloid` remains source-compatible but is not
     # serialized into the runtime params.
     _ = cloid

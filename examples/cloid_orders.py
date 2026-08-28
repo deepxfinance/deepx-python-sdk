@@ -1,6 +1,6 @@
 """Timestamp-nonce order IDs for the DeepX Python SDK.
 
-The current devnet runtime no longer accepts an on-chain client order id
+The current testnet runtime no longer accepts an on-chain client order id
 (``cloid``). A user order's id is the extrinsic timestamp nonce instead. This
 example keeps its historical filename for compatibility, but demonstrates the
 current behavior: pass ``nonce_ms`` when a deterministic order id is useful,

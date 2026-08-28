@@ -66,7 +66,7 @@ def place_perp_order(
     # On-chain `place_order` takes a single `params: PerpPlaceParams` arg.
     # Leverage is no longer a per-order param — set it via set_global_leverage
     # / set_per_market_leverage first. `slippage` only applies to market orders
-    # (folds into OrderType::Market(Option<u64>)). The devnet runtime derives
+    # (folds into OrderType::Market(Option<u64>)). The current runtime derives
     # the system order id from the timestamp nonce; `cloid` is retained in the
     # Python signature for source compatibility but is no longer serialized.
     ev = submit_pallet_call_wait_event(
