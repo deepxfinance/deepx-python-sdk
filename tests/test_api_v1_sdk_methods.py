@@ -247,6 +247,29 @@ def _patch_request(monkeypatch: pytest.MonkeyPatch, api: dx.ApiClient) -> dict[s
             None,
         ),
         (
+            lambda api: api.v1.account.subaccount_balances(
+                address="0xsub", assets=["USDC", "BTC"]
+            ),
+            "/v1/account/subaccounts/0xsub/balances",
+            {"assets": "USDC,BTC"},
+        ),
+        (
+            lambda api: api.v1.account.subaccount_portfolio(
+                address="0xsub",
+                include=["balances", "withdrawalLimits"],
+                assets=["USDC", "BTC"],
+            ),
+            "/v1/account/subaccounts/0xsub/portfolio",
+            {"include": "balances,withdrawalLimits", "assets": "USDC,BTC"},
+        ),
+        (
+            lambda api: api.v1.account.subaccount_withdrawal_limit(
+                address="0xsub", asset="USDC"
+            ),
+            "/v1/account/subaccounts/0xsub/withdrawal-limits/USDC",
+            None,
+        ),
+        (
             lambda api: api.v1.account.subaccount_balance_changes(
                 address="0xsub",
                 limit=100,
@@ -608,10 +631,36 @@ def test_api_v1_ws_helpers() -> None:
         "id": 14,
         "params": {"channel": "account@balances", "subaccount": "0xsub"},
     }
+    assert v1_sub_account_balances(
+        14, subaccount="0xsub", assets=["USDC", "BTC"]
+    ) == {
+        "method": "subscribe",
+        "id": 14,
+        "params": {
+            "channel": "account@balances",
+            "subaccount": "0xsub",
+            "assets": ["USDC", "BTC"],
+        },
+    }
     assert v1_sub_account_portfolio(15, subaccount="0xsub") == {
         "method": "subscribe",
         "id": 15,
         "params": {"channel": "account@portfolio", "subaccount": "0xsub"},
+    }
+    assert v1_sub_account_portfolio(
+        15,
+        subaccount="0xsub",
+        include=["balances", "withdrawalLimits"],
+        assets=["USDC"],
+    ) == {
+        "method": "subscribe",
+        "id": 15,
+        "params": {
+            "channel": "account@portfolio",
+            "subaccount": "0xsub",
+            "include": ["balances", "withdrawalLimits"],
+            "assets": ["USDC"],
+        },
     }
     assert v1_sub_account_perp_positions(16, subaccount="0xsub", symbol="ETH-USDC") == {
         "method": "subscribe",
@@ -854,6 +903,15 @@ def test_ws_unsubscribe_helper_mirrors() -> None:
     for payload, channel in cases:
         assert payload["method"] == "unsubscribe"
         assert payload["params"]["channel"] == channel
+
+
+def test_api_v1_withdrawal_limit_requires_address_and_asset() -> None:
+    api = _make_api()
+
+    with pytest.raises(ValueError, match="address is required"):
+        api.v1.account.subaccount_withdrawal_limit(address="", asset="USDC")
+    with pytest.raises(ValueError, match="asset is required"):
+        api.v1.account.subaccount_withdrawal_limit(address="0xsub", asset="")
 
 
 def test_api_v1_balance_change_limit_validation() -> None:
