@@ -631,6 +631,8 @@ class WsSession:
         subaccount: Optional[str] = None,
         wallet: Optional[str] = None,
         asset: Optional[str] = None,
+        include: Optional[list[str]] = None,
+        assets: Optional[list[str]] = None,
     ) -> None:
         await self.send_json(
             v1_subscribe(
@@ -641,6 +643,8 @@ class WsSession:
                 subaccount=subaccount,
                 wallet=wallet,
                 asset=asset,
+                include=include,
+                assets=assets,
             )
         )
 
