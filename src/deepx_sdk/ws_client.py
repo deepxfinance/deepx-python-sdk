@@ -36,6 +36,8 @@ def v1_ws_params(
     subaccount: Optional[str] = None,
     wallet: Optional[str] = None,
     asset: Optional[str] = None,
+    include: Optional[list[str]] = None,
+    assets: Optional[list[str]] = None,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {"channel": channel}
     if symbol:
@@ -48,6 +50,10 @@ def v1_ws_params(
         payload["wallet"] = wallet
     if asset:
         payload["asset"] = asset
+    if include:
+        payload["include"] = list(include)
+    if assets:
+        payload["assets"] = list(assets)
     return payload
 
 
@@ -60,6 +66,8 @@ def v1_subscribe(
     subaccount: Optional[str] = None,
     wallet: Optional[str] = None,
     asset: Optional[str] = None,
+    include: Optional[list[str]] = None,
+    assets: Optional[list[str]] = None,
 ) -> dict[str, Any]:
     return {
         "method": "subscribe",
@@ -71,6 +79,8 @@ def v1_subscribe(
             subaccount=subaccount,
             wallet=wallet,
             asset=asset,
+            include=include,
+            assets=assets,
         ),
     }
 
@@ -300,16 +310,19 @@ def v1_sub_account_balances(
     request_id: Any,
     *,
     subaccount: str,
+    assets: Optional[list[str]] = None,
 ) -> dict[str, Any]:
-    return v1_subscribe(request_id, channel="account@balances", subaccount=subaccount)
+    return v1_subscribe(request_id, channel="account@balances", subaccount=subaccount, assets=assets)
 
 
 def v1_sub_account_portfolio(
     request_id: Any,
     *,
     subaccount: str,
+    include: Optional[list[str]] = None,
+    assets: Optional[list[str]] = None,
 ) -> dict[str, Any]:
-    return v1_subscribe(request_id, channel="account@portfolio", subaccount=subaccount)
+    return v1_subscribe(request_id, channel="account@portfolio", subaccount=subaccount, include=include, assets=assets)
 
 
 def v1_sub_account_perp_positions(
@@ -618,6 +631,8 @@ class WsSession:
         subaccount: Optional[str] = None,
         wallet: Optional[str] = None,
         asset: Optional[str] = None,
+        include: Optional[list[str]] = None,
+        assets: Optional[list[str]] = None,
     ) -> None:
         await self.send_json(
             v1_subscribe(
@@ -628,6 +643,8 @@ class WsSession:
                 subaccount=subaccount,
                 wallet=wallet,
                 asset=asset,
+                include=include,
+                assets=assets,
             )
         )
 

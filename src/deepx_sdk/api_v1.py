@@ -542,18 +542,33 @@ class AccountV1Client:
             params=params,
         )
 
-    def subaccount_balances(self, *, address: str) -> Any:
+    def subaccount_balances(self, *, address: str, assets: Optional[list[str]] = None) -> Any:
         _require_value("address", address)
         return self._client.request(
             "GET",
             f"/v1/account/subaccounts/{address}/balances",
+            params=_clean_params({"assets": ",".join(assets) if assets else None}) or None,
         )
 
-    def subaccount_portfolio(self, *, address: str) -> Any:
+    def subaccount_portfolio(
+        self, *, address: str, include: Optional[list[str]] = None,
+        assets: Optional[list[str]] = None,
+    ) -> Any:
         _require_value("address", address)
         return self._client.request(
             "GET",
             f"/v1/account/subaccounts/{address}/portfolio",
+            params=_clean_params({
+                "include": ",".join(include) if include else None,
+                "assets": ",".join(assets) if assets else None,
+            }) or None,
+        )
+
+    def subaccount_withdrawal_limit(self, *, address: str, asset: str) -> Any:
+        _require_value("address", address)
+        _require_value("asset", asset)
+        return self._client.request(
+            "GET", f"/v1/account/subaccounts/{address}/withdrawal-limits/{asset}"
         )
 
     def subaccount_balance_changes(
