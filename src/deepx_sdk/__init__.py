@@ -72,6 +72,13 @@ from ._pending_tx import (
 from ._sync_ticket import SyncTransactionTicket
 from ._transaction_manager import TransactionEvent, TransactionManager
 from .sdk import SDK
+from .signing import (
+    SignedExtrinsic,
+    build_signed_perp_cancel,
+    build_signed_perp_order,
+    build_signed_spot_cancel,
+    build_signed_spot_order,
+)
 from ._tx_diagnostics import (
     ClientBackpressure,
     ClientNotConnected,
@@ -132,6 +139,11 @@ __all__ = [
     "ReplacementUnsupported",
     "RPCError",
     "SDK",
+    "SignedExtrinsic",
+    "build_signed_perp_cancel",
+    "build_signed_perp_order",
+    "build_signed_spot_cancel",
+    "build_signed_spot_order",
     "SettlePnlResult",
     "SpotCancelOrderResult",
     "SpotMarketSpec",

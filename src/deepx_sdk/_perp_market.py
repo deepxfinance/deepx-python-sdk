@@ -279,15 +279,9 @@ def cancel_perp_order(
     # On-chain `cancel_order` takes a single `params: PerpCancelParams` arg.
     # With fast_cancel=True the pallet skips the OrderCancelled event (higher
     # priority), so wait for inclusion only and echo the requested order_id.
-    call_params = {
-        "params": {
-            "subaccount": normalize_address(subaccount),
-            "order_id": int(order_id),
-            "market_id": int(market_id),
-            "cancel_reason": "UserCanceled",
-            "fast_cancel": bool(fast_cancel),
-        }
-    }
+    call_params = _perp_cancel_params(
+        subaccount=subaccount, market_id=market_id, order_id=order_id, fast_cancel=fast_cancel,
+    )
     if fast_cancel:
         tx = submit_pallet_call(
             substrate_ws=substrate_ws,
@@ -315,6 +309,20 @@ def cancel_perp_order(
     fields = json.loads(ev.fields_json)
     order_id = _parse_int_field(fields, "order_id")
     return CancelOrderResult(order_id=order_id, tx_hash=ev.tx_hash, extrinsic_hash=ev.extrinsic_hash)
+
+
+def _perp_cancel_params(
+    *, subaccount: str, market_id: int, order_id: int, fast_cancel: bool,
+) -> dict:
+    return {
+        "params": {
+            "subaccount": normalize_address(subaccount),
+            "order_id": int(order_id),
+            "market_id": int(market_id),
+            "cancel_reason": "UserCanceled",
+            "fast_cancel": bool(fast_cancel),
+        }
+    }
 
 
 def modify_perp_order(

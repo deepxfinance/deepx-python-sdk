@@ -450,6 +450,50 @@ lending_status = api.v1.lending.market_status(asset="USDC")
 
 `api.v1.ws.websocket_url()` returns the v1 WebSocket endpoint URL. For request payload construction, `deepx_sdk.ws_client` also exposes `v1_subscribe(...)`, `v1_unsubscribe(...)`, `v1_list(...)`, and `v1_post(...)`.
 
+### Standalone order signing
+
+Use the public signing functions when your application owns REST/WS submission and transaction tracking. They do not require `ChainClient` or `ApiClient`:
+
+```python
+import os
+from deepx_sdk import build_signed_perp_order
+
+signed = build_signed_perp_order(
+    substrate_ws="wss://rpc-testnet.deepx.fi",
+    private_key=os.environ["DEEPX_PRIVATE_KEY"],
+    subaccount="0xYOUR_SUBACCOUNT",
+    market_id=3,
+    is_long=True,
+    size=10**16,             # chain base units; use the market's base decimals
+    price=2_000_000_000,     # perp price uses 1e6 precision
+    order_type="limit",
+    timeout_ms=15_000,
+)
+
+payload = {"signedExtrinsic": signed.signed_extrinsic}
+# Send payload as JSON to POST /v1/chain/tx/placePerpOrder yourself.
+print(signed.tx_hash, signed.nonce, signed.runtime_version)
+```
+
+All four functions are exported from both `deepx_sdk` and `deepx_sdk.signing`:
+
+| Function | Order-specific arguments | REST/WS route |
+| --- | --- | --- |
+| `build_signed_perp_order` | `market_id`, `is_long`, `size`, `price`, `order_type` | `placePerpOrder` |
+| `build_signed_spot_order` | `pair`, `side`, `quote_amount`, `base_amount`, `order_type` | `placeSpotOrder` |
+| `build_signed_perp_cancel` | `market_id`, `order_id`, optional `fast_cancel` | `cancelPerpOrder` |
+| `build_signed_spot_cancel` | `pair`, `side`, `order_id`, optional `fast_cancel` | `cancelSpotOrder` |
+
+Every function takes `substrate_ws`, `private_key`, and `subaccount`, plus optional `nonce_ms` and `timeout_ms`. REST paths are `/v1/chain/tx/<route>`. For WS, send `v1_post(request_id, route=<route>, payload=payload)` using the same signed payload. The sending endpoint and metadata RPC must belong to the same chain. Signing keeps the private key local.
+
+The immutable `SignedExtrinsic` result contains `signed_extrinsic` (hex), `tx_hash` (extrinsic hash), `nonce` (actual timestamp nonce), and `runtime_version` (the metadata snapshot's specVersion). No order is submitted and no ticket, subscription, or recovery task is created. Your application must track acceptance and execution separately; a signed transaction is not an execution result.
+
+Perp supports `limit`, `market`, `ioc`, and `stop`; spot supports `limit`, `market`, and `ioc`. Integer aliases are `limit=0`, `market=1`, `stop=2`, and `ioc=3`. Perp market orders use `price=0` (or omit it); other perp types require `price`. Spot amounts use each token's base units and `side` is `buy`/`sell` (or a boolean). Slippage is in basis points. `post_only` is only allowed on limit orders. Cancellation IDs are u64. These functions do not accept the obsolete `cloid` field; use the returned nonce and transaction hash for correlation.
+
+Each call reads current metadata and chain time, then uses the same frozen metadata encoder as the transaction-ticket path. The connection is closed after loading; encoding or signing errors propagate to the caller. This is synchronous I/O; async applications can use `await asyncio.to_thread(build_signed_perp_order, ...)`.
+
+Automatic timestamp nonces are coordinated across these standalone functions for each chain and signer within one Python process. Explicit `nonce_ms` must be within the chain's one-hour window. Explicit values, separate processes, and other SDK clients do not share this coordination: applications using them together must allocate unique nonces themselves. Do not reuse or rebuild an ambiguously submitted order without reconciling its outcome. Runtime metadata handles binary layout, but business-parameter changes can still require a new SDK version; an upgrade between signing and submission can invalidate a signed transaction.
+
 ### Account balances, margin, and transfer limits
 
 ```python

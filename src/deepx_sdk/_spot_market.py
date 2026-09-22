@@ -65,6 +65,21 @@ def _spot_place_params(
     }
 
 
+def _spot_cancel_params(
+    *, subaccount: str, pair: str, order_id: int, is_buy: bool, fast_cancel: bool,
+) -> dict:
+    return {
+        "params": {
+            "subaccount": normalize_address(subaccount),
+            "pair": "0x" + normalize_bytes32(pair).hex(),
+            "order_id": int(order_id),
+            "is_buy": bool(is_buy),
+            "cancel_reason": "UserCanceled",
+            "fast_cancel": bool(fast_cancel),
+        }
+    }
+
+
 def subaccount_place_order_buy_b(
     *,
     substrate_ws: str,
@@ -622,16 +637,10 @@ def _submit_spot_cancel(
     # On-chain `cancel_order` takes a single `params: SpotCancelParams` arg.
     # With fast_cancel=True the pallet skips the OrderCancelled event (higher
     # priority), so wait for inclusion only and echo the requested order_id.
-    call_params = {
-        "params": {
-            "subaccount": normalize_address(subaccount),
-            "pair": "0x" + normalize_bytes32(pair).hex(),
-            "order_id": int(order_id),
-            "is_buy": bool(is_buy),
-            "cancel_reason": "UserCanceled",
-            "fast_cancel": bool(fast_cancel),
-        }
-    }
+    call_params = _spot_cancel_params(
+        subaccount=subaccount, pair=pair, order_id=order_id,
+        is_buy=is_buy, fast_cancel=fast_cancel,
+    )
     if fast_cancel:
         tx = submit_pallet_call(
             substrate_ws=substrate_ws,
