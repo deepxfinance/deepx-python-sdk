@@ -731,6 +731,7 @@ def set_global_leverage(
 ) -> TxResult:
     """Set the per-subaccount global leverage cap (applies to all markets).
 
+    Only the subaccount owner may change the global cap, not a trading delegate.
     Leverage is configured per subaccount, not per order — call this before
     trading. ``max_leverage`` is scaled by LEVERAGE_PRECISION (1000):
     10x = 10000. ``None`` clears the override and falls back to the protocol
@@ -777,6 +778,9 @@ def set_per_market_leverage(
 ) -> TxResult:
     """Set a per-subaccount, per-market leverage override.
 
+    On runtimes supporting delegated leverage (testnet 371+), a valid trading
+    delegate may set or clear this override using its own key and the target
+    subaccount. Global leverage remains owner-only.
     Overrides the global cap for one market (the more conservative wins).
     ``max_leverage`` is scaled by LEVERAGE_PRECISION (1000): 10x = 10000.
     ``None`` clears the override for this market.

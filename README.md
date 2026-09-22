@@ -577,6 +577,18 @@ Each subaccount may hold at most `max_active_orders` open orders **per market** 
 
 A runnable version is in [`examples/leverage.py`](examples/leverage.py).
 
+On testnet runtime 371 and later runtimes retaining this permission, a valid delegate with trading permission may set or clear a **single-market** leverage override. Sign with the delegate key and pass the owner's target subaccount; do not substitute the delegate's address for the subaccount:
+
+```python
+delegate_chain = dx.ChainClient(private_key="0xDELEGATE_PRIVATE_KEY")
+delegate_chain.perp_market.set_per_market_leverage(
+    subaccount="0xTARGET_SUBACCOUNT", market_id=3, max_leverage=12_500,
+)
+# Use max_leverage=None to clear that market's override.
+```
+
+The chain checks delegate permissions and expiry. Global leverage (`set_global_leverage`) remains owner-only. The SDK uses the existing transaction format; no new delegate-specific transaction method is needed.
+
 Orders can also be placed through the REST API — it builds a signed extrinsic client-side and submits via `/v1/chain/tx/*`: `api.v1.chain_tx.place_perp_order_ioc(...)`. Both paths take the same order parameters. On-chain reverts surface as `ChainError` and REST rejections as `APIError` (see [Error codes](#error-codes)).
 
 The high-level `chain.perp_market.place_order(..., order_type="ioc")` dispatcher also routes to `place_perp_order_ioc`. Accepted aliases: `"ioc"`, `"I"`, `"IOC"`, `3`.
@@ -835,6 +847,28 @@ A runnable version is in [`examples/delegate.py`](examples/delegate.py).
 - On latest `AccountInfo`, `borrow_positions` is returned as an empty list because that layout does not include lending borrow details.
 
 ### Lending calls
+
+`chain.lending.max_transfer_amount_for(...)` queries the Lending precompile's `maxTransferAmountFor(address,uint8,bytes,bool)` (available on testnet runtime 370+, verified on runtime 371). It returns a Python integer in the asset's **base units**, unlike REST transfer-limit decimal strings:
+
+```python
+from decimal import Decimal
+import deepx_sdk as dx
+
+chain = dx.ChainClient()  # no signing key needed for this query
+pool = next(p for p in chain.lending.asset_pools(market_id=1)
+            if p.asset.lower() == "usdc")
+amount = chain.lending.max_transfer_amount_for(
+    account="0xYOUR_SUBACCOUNT",
+    lending_market=pool.market_id,
+    asset=pool.asset,
+    auto_borrow=False,
+)
+print("Token quantity:", Decimal(amount) / Decimal(10**pool.decimal))
+```
+
+Use the exact asset identifier from the pool (for example, `usdc`), or pass `symbol="USDC"` to resolve it through the configured API. `auto_borrow=False` quotes withdrawal capacity only. `True` may add borrowing capacity after the entire deposit can be withdrawn, sharing pool liquidity and respecting borrowing limits. Querying does not transfer funds or create debt.
+
+The chain query returns only a quantity, with no `AVAILABLE` / `RESTRICTED` / `UNAVAILABLE` status. Zero can mean an inactive pool or no capacity; RPC errors and calculation reverts propagate as errors and must not be converted to zero. A successful quote is not a guarantee that a transfer will execute. The existing chain method `max_withdraw_amount_for()` remains supported; only the old REST withdrawal-limit route was removed.
 
 ```python
 market = chain.lending.lending_markets(market_id=1)

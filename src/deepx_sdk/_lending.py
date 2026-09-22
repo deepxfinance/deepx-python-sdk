@@ -677,6 +677,33 @@ def max_withdraw_amount_for(
     return int(value)
 
 
+def max_transfer_amount_for(
+    *,
+    evm_rpc_url: str,
+    precompile_address: str,
+    account: str,
+    lending_market: int,
+    asset: str | bytes,
+    auto_borrow: bool = False,
+) -> int:
+    """Quote maximum outflow in token base units; RPC/revert errors propagate.
+
+    With auto_borrow=True, the quote can include borrowing after withdrawing
+    the entire deposit. This read-only query neither transfers nor borrows.
+    Unlike REST transfer limits, it returns only a quantity, not a status.
+    """
+    if not isinstance(auto_borrow, bool):
+        raise ValueError("auto_borrow must be a bool")
+    data = encode_call(
+        "maxTransferAmountFor(address,uint8,bytes,bool)",
+        ["address", "uint8", "bytes", "bool"],
+        [normalize_address(account), lending_market, _normalize_bytes(asset), auto_borrow],
+    )
+    raw = evm_call(evm_rpc_url, precompile_address, data)
+    (value,) = decode_abi(["uint128"], raw)
+    return int(value)
+
+
 def _submit_lending_tx(
     *,
     substrate_ws: str,

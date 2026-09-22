@@ -34,6 +34,7 @@ from ._lending import (
     health_for,
     lending_markets,
     max_borrow_amount_for,
+    max_transfer_amount_for,
     max_withdraw_amount_for,
     repay,
     withdraw,
@@ -3528,4 +3529,25 @@ class LendingClient(_EvmTransportClientMixin):
             account=account,
             lending_market=lending_market,
             asset=resolved_asset,
+        )
+
+    def max_transfer_amount_for(
+        self,
+        *,
+        account: str,
+        lending_market: int,
+        asset: str | bytes | None = None,
+        symbol: str | bytes | None = None,
+        auto_borrow: bool = False,
+        precompile_address: Optional[str] = None,
+    ) -> int:
+        """Return a chain transfer quote in token base units, without REST status fields."""
+        resolved_asset = self._client._resolve_lending_asset(asset=asset, symbol=symbol)
+        return max_transfer_amount_for(
+            evm_rpc_url=self._client.evm_rpc_url,
+            precompile_address=self._precompile_address(precompile_address),
+            account=account,
+            lending_market=lending_market,
+            asset=resolved_asset,
+            auto_borrow=auto_borrow,
         )

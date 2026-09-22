@@ -161,6 +161,7 @@ def test_chain_client_all_public_methods_are_explicitly_covered() -> None:
             "health_for",
             "max_borrow_amount_for",
             "max_withdraw_amount_for",
+            "max_transfer_amount_for",
         },
     }
     actual = {
@@ -259,6 +260,7 @@ def test_chain_client_all_public_methods_dispatch_without_skip(monkeypatch) -> N
         "health_for",
         "max_borrow_amount_for",
         "max_withdraw_amount_for",
+        "max_transfer_amount_for",
     ]:
         patch(name)
 
@@ -418,6 +420,7 @@ def test_chain_client_all_public_methods_dispatch_without_skip(monkeypatch) -> N
     client.lending.health_for(subaccount=SUBACCOUNT)
     client.lending.max_borrow_amount_for(account=SUBACCOUNT, lending_market=1, asset=b"USDC")
     client.lending.max_withdraw_amount_for(account=SUBACCOUNT, lending_market=1, asset=b"USDC")
+    client.lending.max_transfer_amount_for(account=SUBACCOUNT, lending_market=1, asset=b"USDC")
 
     assert calls == [
         "get_perp_price_bounds",
@@ -494,6 +497,7 @@ def test_chain_client_all_public_methods_dispatch_without_skip(monkeypatch) -> N
         "health_for",
         "max_borrow_amount_for",
         "max_withdraw_amount_for",
+        "max_transfer_amount_for",
     ]
 
 
