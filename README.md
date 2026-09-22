@@ -450,6 +450,49 @@ lending_status = api.v1.lending.market_status(asset="USDC")
 
 `api.v1.ws.websocket_url()` returns the v1 WebSocket endpoint URL. For request payload construction, `deepx_sdk.ws_client` also exposes `v1_subscribe(...)`, `v1_unsubscribe(...)`, `v1_list(...)`, and `v1_post(...)`.
 
+### Account balances, margin, and transfer limits
+
+```python
+from decimal import Decimal
+import deepx_sdk as dx
+
+api = dx.ApiClient()  # public testnet
+address = "0xYOUR_SUBACCOUNT"
+balances = api.v1.account.subaccount_balances(address=address, assets=["USDC"])
+portfolio = api.v1.account.subaccount_portfolio(
+    address=address,
+    include=["balances", "transferLimits"],
+    assets=["USDC"],
+    auto_borrow=False,
+)
+limit = api.v1.account.subaccount_transfer_limit(
+    address=address, asset="USDC", auto_borrow=False,
+)
+if limit["status"] == "AVAILABLE":
+    quoted_qty = Decimal(limit["maxTransferableQty"])
+    print("Quoted transfer limit:", quoted_qty)
+elif limit["status"] == "RESTRICTED":
+    print("Transfers out are blocked; the quantity is informational only")
+else:
+    print("Transfer limit unavailable; do not substitute zero")
+```
+
+These methods also work with `AsyncApiClient`; await each call. `auto_borrow` defaults to `False`, which caps the quote at the asset's account balance. `True` allows the quote to include new borrowing capacity; querying it does not borrow or transfer funds. REST sends `autoBorrow=true/false`, while WS sends a JSON boolean. Each transfer-limit entry echoes `autoBorrow`.
+
+| `status` | `maxTransferableQty` | Meaning |
+| --- | --- | --- |
+| `AVAILABLE` | Decimal string, including `"0"` | Calculation succeeded and no transfer restriction was found. Zero is a valid result. |
+| `RESTRICTED` | Decimal string, including `"0"` | Transfers out are blocked; the quantity is informational, even when positive. |
+| `UNAVAILABLE` | `null` (Python `None`) | Calculation or a required state check failed. This is not a zero limit. |
+
+Quantities use the asset's own unit, not USD or scaled chain integers. The SDK preserves strings and `None`; use `Decimal`, not `float`, for calculations. Limits for different assets share account margin capacity and are not additive. A quote is recalculated when a transfer or withdrawal is submitted and does not guarantee execution.
+
+`portfolio["availableMargin"]` is available margin in USDC; `transferLimits` describes asset transfers and must not be used as opening-position margin. `assets` filters requested expansions, not account-wide risk calculations; supply `include` when filtering portfolio assets. REST uses comma-separated filters and WS uses arrays.
+
+Migration: the backend removed `/withdrawal-limits/{asset}` in favor of `/transfer-limits/{asset}`. Replace `subaccount_withdrawal_limit()` with `subaccount_transfer_limit()`, `maxWithdrawableQty` with `maxTransferableQty`, and `withdrawalLimits` with `transferLimits` in REST/WS portfolio requests and response handling. The old SDK method raises a migration error without sending a request; the old `include` name is rejected locally.
+
+Account API responses may combine multiple underlying reads and are not atomic block snapshots, either within one response or across responses. Do not use them as atomically consistent inputs for liquidation or risk logic.
+
 ## On-chain usage
 
 ### Precompile defaults
@@ -1037,6 +1080,33 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
+To receive portfolio transfer limits:
+
+```python
+async with await WsClient(base_url="https://ws-api-testnet.deepx.fi").connect() as ws:
+    await ws.subscribe(
+        "portfolio-1",
+        channel="account@portfolio",
+        subaccount="0xYOUR_SUBACCOUNT",
+        include=["balances", "transferLimits"],
+        assets=["USDC"],
+        auto_borrow=False,
+    )
+    while True:
+        message = await ws.recv_message()
+        if message.method == "ping":
+            await ws.pong()
+        elif message.channel == "error":
+            raise RuntimeError(message.raw)
+        elif message.channel == "account@portfolio":
+            print(message.data)
+            break
+```
+
+Run this block inside an async function. The `v1_sub_account_portfolio(...)` helper accepts the same account-view options. `WsSession.subscribe()` and `v1_subscribe()` omit `autoBorrow` when `auto_borrow` is `None` (the default), so the server uses `false`; an explicit `False` is sent as a JSON boolean. Subscription acknowledgements are separate from portfolio pushes.
+
+Portfolio `data` may be an array for an initial snapshot or an object for an incremental update. The SDK preserves both shapes and the transfer-limit fields unchanged.
+
 Notes:
 
 - Client messages use `method` with optional `id`, `params`, or `request`.
@@ -1070,8 +1140,8 @@ Account channels:
 
 | Channel                  | Required params          | Optional params |
 | ------------------------ | ------------------------ | --------------- |
-| `account@balances`       | `subaccount`             | -               |
-| `account@portfolio`      | `subaccount`             | -               |
+| `account@balances`       | `subaccount`             | `assets`        |
+| `account@portfolio`      | `subaccount`             | `include`, `assets`, `autoBorrow` |
 | `account@perp-positions` | `subaccount`             | `symbol`        |
 | `account@perp-orders`    | `subaccount` or `wallet` | `symbol`        |
 | `account@spot-orders`    | `subaccount` or `wallet` | `symbol`        |

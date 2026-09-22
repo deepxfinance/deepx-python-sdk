@@ -244,7 +244,7 @@ def _patch_request(monkeypatch: pytest.MonkeyPatch, api: dx.ApiClient) -> dict[s
         (
             lambda api: api.v1.account.subaccount_portfolio(address="0xsub"),
             "/v1/account/subaccounts/0xsub/portfolio",
-            None,
+            {"autoBorrow": "false"},
         ),
         (
             lambda api: api.v1.account.subaccount_balances(
@@ -256,18 +256,18 @@ def _patch_request(monkeypatch: pytest.MonkeyPatch, api: dx.ApiClient) -> dict[s
         (
             lambda api: api.v1.account.subaccount_portfolio(
                 address="0xsub",
-                include=["balances", "withdrawalLimits"],
+                include=["balances", "transferLimits"],
                 assets=["USDC", "BTC"],
             ),
             "/v1/account/subaccounts/0xsub/portfolio",
-            {"include": "balances,withdrawalLimits", "assets": "USDC,BTC"},
+            {"include": "balances,transferLimits", "assets": "USDC,BTC", "autoBorrow": "false"},
         ),
         (
-            lambda api: api.v1.account.subaccount_withdrawal_limit(
+            lambda api: api.v1.account.subaccount_transfer_limit(
                 address="0xsub", asset="USDC"
             ),
-            "/v1/account/subaccounts/0xsub/withdrawal-limits/USDC",
-            None,
+            "/v1/account/subaccounts/0xsub/transfer-limits/USDC",
+            {"autoBorrow": "false"},
         ),
         (
             lambda api: api.v1.account.subaccount_balance_changes(
@@ -645,12 +645,12 @@ def test_api_v1_ws_helpers() -> None:
     assert v1_sub_account_portfolio(15, subaccount="0xsub") == {
         "method": "subscribe",
         "id": 15,
-        "params": {"channel": "account@portfolio", "subaccount": "0xsub"},
+        "params": {"channel": "account@portfolio", "subaccount": "0xsub", "autoBorrow": False},
     }
     assert v1_sub_account_portfolio(
         15,
         subaccount="0xsub",
-        include=["balances", "withdrawalLimits"],
+        include=["balances", "transferLimits"],
         assets=["USDC"],
     ) == {
         "method": "subscribe",
@@ -658,8 +658,9 @@ def test_api_v1_ws_helpers() -> None:
         "params": {
             "channel": "account@portfolio",
             "subaccount": "0xsub",
-            "include": ["balances", "withdrawalLimits"],
+            "include": ["balances", "transferLimits"],
             "assets": ["USDC"],
+            "autoBorrow": False,
         },
     }
     assert v1_sub_account_perp_positions(16, subaccount="0xsub", symbol="ETH-USDC") == {
@@ -905,13 +906,74 @@ def test_ws_unsubscribe_helper_mirrors() -> None:
         assert payload["params"]["channel"] == channel
 
 
-def test_api_v1_withdrawal_limit_requires_address_and_asset() -> None:
+def test_api_v1_transfer_limit_requires_address_and_asset() -> None:
     api = _make_api()
 
     with pytest.raises(ValueError, match="address is required"):
-        api.v1.account.subaccount_withdrawal_limit(address="", asset="USDC")
+        api.v1.account.subaccount_transfer_limit(address="", asset="USDC")
     with pytest.raises(ValueError, match="asset is required"):
-        api.v1.account.subaccount_withdrawal_limit(address="0xsub", asset="")
+        api.v1.account.subaccount_transfer_limit(address="0xsub", asset="")
+
+
+def test_removed_account_view_names_fail_before_request(monkeypatch) -> None:
+    api = _make_api()
+    captured = _patch_request(monkeypatch, api)
+    with pytest.raises(RuntimeError, match="use subaccount_transfer_limit"):
+        api.v1.account.subaccount_withdrawal_limit(address="0xsub", asset="USDC")
+    with pytest.raises(ValueError, match="use transferLimits"):
+        api.v1.account.subaccount_portfolio(address="0xsub", include=["withdrawalLimits"])
+    assert captured == {}
+
+    class NoSendSocket:
+        async def send(self, payload):
+            pytest.fail("invalid subscription must not be sent")
+
+    with pytest.raises(ValueError, match="use transferLimits"):
+        v1_sub_account_portfolio(1, subaccount="0xsub", include=["withdrawalLimits"])
+    with pytest.raises(ValueError, match="use transferLimits"):
+        asyncio.run(WsSession(NoSendSocket()).subscribe(
+            1, channel="account@portfolio", subaccount="0xsub", include=["withdrawalLimits"],
+        ))
+
+
+@pytest.mark.parametrize("auto_borrow", ["false", "true", 0, 1])
+def test_account_view_auto_borrow_requires_bool(monkeypatch, auto_borrow) -> None:
+    api = _make_api()
+    captured = _patch_request(monkeypatch, api)
+    with pytest.raises(ValueError, match="auto_borrow must be a bool"):
+        api.v1.account.subaccount_transfer_limit(
+            address="0xsub", asset="USDC", auto_borrow=auto_borrow,
+        )
+    with pytest.raises(ValueError, match="auto_borrow must be a bool"):
+        api.v1.account.subaccount_portfolio(address="0xsub", auto_borrow=auto_borrow)
+    with pytest.raises(ValueError, match="auto_borrow must be a bool"):
+        v1_sub_account_portfolio(1, subaccount="0xsub", auto_borrow=auto_borrow)
+    assert captured == {}
+
+
+@pytest.mark.parametrize("auto_borrow", [None, False, True])
+def test_ws_portfolio_session_sends_account_view_parameters(auto_borrow) -> None:
+    sent = []
+
+    class FakeSocket:
+        async def send(self, payload):
+            sent.append(json.loads(payload))
+
+    params = {
+        "channel": "account@portfolio", "subaccount": "0xsub",
+        "include": ["balances", "transferLimits"], "assets": ["USDC"],
+    }
+    asyncio.run(WsSession(FakeSocket()).subscribe(1, **params, auto_borrow=auto_borrow))
+    expected = dict(params)
+    if auto_borrow is not None:
+        expected["autoBorrow"] = auto_borrow
+    assert sent == [{"method": "subscribe", "id": 1, "params": expected}]
+    if auto_borrow is not None:
+        assert type(sent[0]["params"]["autoBorrow"]) is bool
+        assert v1_sub_account_portfolio(
+            1, subaccount="0xsub", include=params["include"], assets=params["assets"],
+            auto_borrow=auto_borrow,
+        ) == sent[0]
 
 
 def test_api_v1_balance_change_limit_validation() -> None:

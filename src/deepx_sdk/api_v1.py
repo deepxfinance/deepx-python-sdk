@@ -553,22 +553,45 @@ class AccountV1Client:
     def subaccount_portfolio(
         self, *, address: str, include: Optional[list[str]] = None,
         assets: Optional[list[str]] = None,
+        auto_borrow: bool = False,
     ) -> Any:
         _require_value("address", address)
+        if include and "withdrawalLimits" in include:
+            raise ValueError("withdrawalLimits was removed; use transferLimits in include")
+        if not isinstance(auto_borrow, bool):
+            raise ValueError("auto_borrow must be a bool")
         return self._client.request(
             "GET",
             f"/v1/account/subaccounts/{address}/portfolio",
             params=_clean_params({
                 "include": ",".join(include) if include else None,
                 "assets": ",".join(assets) if assets else None,
-            }) or None,
+                "auto_borrow": auto_borrow,
+            }),
         )
 
     def subaccount_withdrawal_limit(self, *, address: str, asset: str) -> Any:
+        """Removed upstream; use subaccount_transfer_limit and its new response fields."""
+        raise RuntimeError(
+            "subaccount_withdrawal_limit was removed; use subaccount_transfer_limit "
+            "and read status / maxTransferableQty instead of maxWithdrawableQty"
+        )
+
+    def subaccount_transfer_limit(
+        self, *, address: str, asset: str, auto_borrow: bool = False,
+    ) -> Any:
+        """Return a transfer quote in asset units, preserving status and nullable quantity.
+
+        auto_borrow=True may include new debt; False caps the quote at the asset balance.
+        RESTRICTED quantities are informational; UNAVAILABLE quantities remain None.
+        """
         _require_value("address", address)
         _require_value("asset", asset)
+        if not isinstance(auto_borrow, bool):
+            raise ValueError("auto_borrow must be a bool")
         return self._client.request(
-            "GET", f"/v1/account/subaccounts/{address}/withdrawal-limits/{asset}"
+            "GET", f"/v1/account/subaccounts/{address}/transfer-limits/{asset}",
+            params=_clean_params({"auto_borrow": auto_borrow}),
         )
 
     def subaccount_balance_changes(

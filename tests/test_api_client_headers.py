@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import sys
 import types
 
@@ -87,6 +88,59 @@ def test_async_api_client_uses_v1_methods(monkeypatch) -> None:
     assert asyncio.run(run()) == {"ok": True}
     assert captured["timeout"] == 9
     assert captured["req"].full_url == "https://rest-api-testnet.deepx.fi/v1/ping"
+
+
+@pytest.mark.parametrize("async_client", [False, True])
+@pytest.mark.parametrize("portfolio", [False, True])
+@pytest.mark.parametrize("auto_borrow", [False, True])
+@pytest.mark.parametrize("status,qty", [
+    ("AVAILABLE", "0"), ("AVAILABLE", "1.234567890123456789"),
+    ("RESTRICTED", "0"), ("RESTRICTED", "100"), ("UNAVAILABLE", None),
+])
+def test_transfer_limit_wire_format_and_response(
+    monkeypatch, async_client, portfolio, auto_borrow, status, qty,
+) -> None:
+    limit = {
+        "asset": "USDC", "autoBorrow": auto_borrow,
+        "status": status, "maxTransferableQty": qty,
+    }
+    response = {"transferLimits": [limit]} if portfolio else limit
+    expected_params = {"autoBorrow": ["true" if auto_borrow else "false"]}
+    if portfolio:
+        expected_params.update({"include": ["balances,transferLimits"], "assets": ["USDC"]})
+
+    def fake_urlopen(req, timeout=0):
+        url = api_mod.urllib.parse.urlsplit(req.full_url)
+        suffix = "portfolio" if portfolio else "transfer-limits/USDC"
+        assert url.path == f"/v1/account/subaccounts/0xsub/{suffix}"
+        assert api_mod.urllib.parse.parse_qs(url.query) == expected_params
+        return _DummyResponse(json.dumps(response))
+
+    monkeypatch.setattr(api_mod.urllib.request, "urlopen", fake_urlopen)
+    client_type = dx.AsyncApiClient if async_client else dx.ApiClient
+    client = client_type(base_url="http://127.0.0.1:8080")
+    if portfolio:
+        result = client.v1.account.subaccount_portfolio(
+            address="0xsub", include=["balances", "transferLimits"],
+            assets=["USDC"], auto_borrow=auto_borrow,
+        )
+    else:
+        result = client.v1.account.subaccount_transfer_limit(
+            address="0xsub", asset="USDC", auto_borrow=auto_borrow,
+        )
+    if async_client:
+        result = asyncio.run(result)
+    assert result == response
+
+    from deepx_sdk.ws_client import WsSession
+
+    for data in ({"transferLimits": [limit]}, [{"transferLimits": [limit]}]):
+        class FakeSocket:
+            async def recv(self):
+                return json.dumps({"channel": "account@portfolio", "data": data})
+
+        message = asyncio.run(WsSession(FakeSocket()).recv_message())
+        assert message.data == data
 
 
 def test_api_client_allows_user_agent_override(monkeypatch) -> None:

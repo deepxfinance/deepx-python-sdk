@@ -38,7 +38,12 @@ def v1_ws_params(
     asset: Optional[str] = None,
     include: Optional[list[str]] = None,
     assets: Optional[list[str]] = None,
+    auto_borrow: Optional[bool] = None,
 ) -> dict[str, Any]:
+    if channel == "account@portfolio" and include and "withdrawalLimits" in include:
+        raise ValueError("withdrawalLimits was removed; use transferLimits in include")
+    if auto_borrow is not None and not isinstance(auto_borrow, bool):
+        raise ValueError("auto_borrow must be a bool")
     payload: dict[str, Any] = {"channel": channel}
     if symbol:
         payload["symbol"] = symbol
@@ -54,6 +59,8 @@ def v1_ws_params(
         payload["include"] = list(include)
     if assets:
         payload["assets"] = list(assets)
+    if auto_borrow is not None:
+        payload["autoBorrow"] = auto_borrow
     return payload
 
 
@@ -68,6 +75,7 @@ def v1_subscribe(
     asset: Optional[str] = None,
     include: Optional[list[str]] = None,
     assets: Optional[list[str]] = None,
+    auto_borrow: Optional[bool] = None,
 ) -> dict[str, Any]:
     return {
         "method": "subscribe",
@@ -81,6 +89,7 @@ def v1_subscribe(
             asset=asset,
             include=include,
             assets=assets,
+            auto_borrow=auto_borrow,
         ),
     }
 
@@ -321,8 +330,12 @@ def v1_sub_account_portfolio(
     subaccount: str,
     include: Optional[list[str]] = None,
     assets: Optional[list[str]] = None,
+    auto_borrow: bool = False,
 ) -> dict[str, Any]:
-    return v1_subscribe(request_id, channel="account@portfolio", subaccount=subaccount, include=include, assets=assets)
+    return v1_subscribe(
+        request_id, channel="account@portfolio", subaccount=subaccount,
+        include=include, assets=assets, auto_borrow=auto_borrow,
+    )
 
 
 def v1_sub_account_perp_positions(
@@ -633,6 +646,7 @@ class WsSession:
         asset: Optional[str] = None,
         include: Optional[list[str]] = None,
         assets: Optional[list[str]] = None,
+        auto_borrow: Optional[bool] = None,
     ) -> None:
         await self.send_json(
             v1_subscribe(
@@ -645,6 +659,7 @@ class WsSession:
                 asset=asset,
                 include=include,
                 assets=assets,
+                auto_borrow=auto_borrow,
             )
         )
 
