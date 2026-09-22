@@ -491,7 +491,7 @@ Quantities use the asset's own unit, not USD or scaled chain integers. The SDK p
 
 Migration: the backend removed `/withdrawal-limits/{asset}` in favor of `/transfer-limits/{asset}`. Replace `subaccount_withdrawal_limit()` with `subaccount_transfer_limit()`, `maxWithdrawableQty` with `maxTransferableQty`, and `withdrawalLimits` with `transferLimits` in REST/WS portfolio requests and response handling. The old SDK method raises a migration error without sending a request; the old `include` name is rejected locally.
 
-Account API responses may combine multiple underlying reads and are not atomic block snapshots, either within one response or across responses. Do not use them as atomically consistent inputs for liquidation or risk logic.
+See [Known Limitations](#known-limitations) for account API consistency constraints.
 
 ## On-chain usage
 
@@ -1202,3 +1202,13 @@ res = chain.spot_market.subaccount_place_order_buy_b(
 )
 print(res.order_id, res.tx_hash)
 ```
+
+## Known Limitations
+
+### Cross-request consistency
+
+API data returned by the SDK is assembled server-side from multiple underlying reads and is not guaranteed to reflect the same chain block — neither within a single response that combines values from different sources, nor across separate requests.
+
+Fields may be mutually inconsistent, producing combinations that never existed on any single block, and `time` is the server wall-clock time rather than the block timestamp.
+
+**Do not treat fields as an atomically consistent snapshot for liquidation or risk logic.**
