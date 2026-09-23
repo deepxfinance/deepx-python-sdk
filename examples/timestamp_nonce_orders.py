@@ -2,14 +2,13 @@
 
 The current testnet runtime no longer accepts an on-chain client order id
 (``cloid``). A user order's id is the extrinsic timestamp nonce instead. This
-example keeps its historical filename for compatibility, but demonstrates the
-current behavior: pass ``nonce_ms`` when a deterministic order id is useful,
-then cancel using the id returned by the placement event.
+example demonstrates the current behavior: pass ``nonce_ms`` when a deterministic
+order id is useful, then cancel using the id returned by the placement event.
 
 This file is **not** part of the test suite. Fill in the placeholders below,
 then run it directly:
 
-    python examples/cloid_orders.py
+    python examples/timestamp_nonce_orders.py
 """
 
 from __future__ import annotations
