@@ -63,9 +63,9 @@ class ChainError(TxError):
     """Raised when a transaction was executed on-chain and reverted.
 
     The ``code`` field is the canonical ``"<pallet_index>_<error_index>"``
-    identifier (e.g. ``"22_17"``) from ``ErrorCodes.yaml``. ``name`` and
-    ``pallet`` are populated from the registry when the code is recognized;
-    otherwise they default to empty strings.
+    identifier (e.g. ``"22_17"``). Event decoding prefers the execution runtime's
+    metadata for ``name`` and ``pallet``. The static registry is a fallback for
+    paths without metadata; enum indexes may differ between runtimes.
     """
 
     code: str = ""

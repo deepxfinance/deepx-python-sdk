@@ -64,12 +64,14 @@ class _TrackedTransaction(Generic[ResultT]):
 class _IndexedBlock:
     extrinsic_indexes: dict[str, int]
     block_number: int | None
+    parent_hash: str | None = None
 
 
 @dataclass(frozen=True)
 class _ResolvedEvents:
     events: list[dict[str, Any]]
     event_decode_ms: float
+    metadata: Any = None
 
 
 class _TrackedChainError(ChainError):
@@ -273,6 +275,7 @@ class TransactionTracker:
                     block_hash,
                     indexed.block_number,
                     source_transport,
+                    parent_hash=indexed.parent_hash,
                 ),
                 name=f"deepx-resolve-events-{block_hash}",
             )
@@ -316,6 +319,7 @@ class TransactionTracker:
                         f"extrinsic_hash={tx_hash}, block_hash={block_hash}, "
                         f"extrinsic_idx={extrinsic_index}"
                     ),
+                    metadata=resolved.metadata,
                 )
                 if isinstance(decoded_error, ChainError):
                     error: Any = _TrackedChainError(
@@ -824,6 +828,7 @@ class TransactionTracker:
         return _IndexedBlock(
             extrinsic_indexes=extrinsic_indexes,
             block_number=_block_number_from_response(block_response),
+            parent_hash=_block_parent_hash(block_response),
         )
 
     def _record_submission_endpoint(
@@ -841,25 +846,39 @@ class TransactionTracker:
         block_hash: str,
         block_number: int | None,
         transport: AsyncRpcTransport,
+        *,
+        parent_hash: str | None = None,
     ) -> _ResolvedEvents:
-        raw_events_batches = await self._fetch_events_map_batches(
-            block_hash,
-            block_number,
-            transport,
-        )
+        snapshot = None
+        selector = getattr(self._encoder, "snapshot_for_events", None)
+        if callable(selector):
+            if not parent_hash:
+                raise RPCError("Missing parent hash for block event metadata")
+            version = await transport.request("state_getRuntimeVersion", [parent_hash])
+            if not isinstance(version, dict):
+                raise RPCError("Missing runtime version for block event metadata")
+            snapshot = await selector(block_hash, version)
+        decode_options = {"snapshot": snapshot} if snapshot is not None else {}
+        raw_events_batches = []
+        if snapshot is None or _native_py.uses_events_map(snapshot.substrate):
+            raw_events_batches = await self._fetch_events_map_batches(
+                block_hash, block_number, transport,
+            )
         decode_started_ns = time.perf_counter_ns()
         if raw_events_batches:
             # Multi-threaded runtime: events live in System.EventsMap(number, thread).
-            decoded = await self._encoder.decode_system_events_map(raw_events_batches)
+            decoded = await self._encoder.decode_system_events_map(raw_events_batches, **decode_options)
         else:
-            # Legacy single-thread runtime: events live in System.Events.
+            # MVCC (and legacy single-thread) runtimes use System.Events.
             raw_events = await transport.request(
                 "state_getStorage",
-                [self._encoder.snapshot.system_events_storage_key, block_hash],
+                [(snapshot or self._encoder.snapshot).system_events_storage_key, block_hash],
             )
             if not isinstance(raw_events, str):
+                if snapshot is not None:
+                    raise RPCError(f"Event storage unavailable at block {block_hash}")
                 raw_events = "0x"
-            decoded = await self._encoder.decode_system_events(raw_events)
+            decoded = await self._encoder.decode_system_events(raw_events, **decode_options)
         event_decode_ms = (
             time.perf_counter_ns() - decode_started_ns
         ) / 1_000_000
@@ -872,6 +891,7 @@ class TransactionTracker:
         return _ResolvedEvents(
             events=events,
             event_decode_ms=event_decode_ms,
+            metadata=snapshot.substrate.metadata if snapshot is not None else None,
         )
 
     async def _fetch_events_map_batches(
@@ -980,6 +1000,16 @@ def _block_number_from_response(block_response: object) -> int | None:
         return int(number, 16)
     except ValueError:
         return None
+
+
+def _block_parent_hash(block_response: object) -> str | None:
+    if isinstance(block_response, dict):
+        block = block_response.get("block")
+        if isinstance(block, dict) and isinstance(block.get("header"), dict):
+            parent = block["header"].get("parentHash")
+            if isinstance(parent, str):
+                return parent
+    return None
 
 
 def _hash_extrinsic(data_hex: str) -> str:

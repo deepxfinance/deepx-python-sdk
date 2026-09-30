@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import threading
 import time
+from collections import OrderedDict
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
@@ -190,6 +191,7 @@ class ExtrinsicEncoder:
         self._keypair: Any = None
         self._refresh_lock = asyncio.Lock()
         self._runtime_gate = _PriorityGate()
+        self._event_snapshots: OrderedDict[tuple[int, int], RuntimeSnapshot] = OrderedDict()
         self.nonce_allocator = TimestampNonceAllocator(
             estimated_chain_time_ms=self.estimated_chain_time_ms
         )
@@ -248,8 +250,10 @@ class ExtrinsicEncoder:
     async def decode_system_events(
         self,
         raw_hex: str,
+        *,
+        snapshot: RuntimeSnapshot | None = None,
     ) -> list[dict[str, object]]:
-        snapshot = self.snapshot
+        snapshot = snapshot or self.snapshot
         async with self._runtime_gate.slot(priority=True):
             async with snapshot.runtime_lock:
                 return await asyncio.to_thread(
@@ -261,9 +265,11 @@ class ExtrinsicEncoder:
     async def decode_system_events_map(
         self,
         raw_hex_values: list[str],
+        *,
+        snapshot: RuntimeSnapshot | None = None,
     ) -> list[dict[str, object]]:
         """Decode per-thread System.EventsMap batches (multi-threaded runtime)."""
-        snapshot = self.snapshot
+        snapshot = snapshot or self.snapshot
         async with self._runtime_gate.slot(priority=True):
             async with snapshot.runtime_lock:
                 return await asyncio.to_thread(
@@ -271,6 +277,34 @@ class ExtrinsicEncoder:
                     substrate=snapshot.substrate,
                     raw_hex_values=raw_hex_values,
                 )
+
+    async def snapshot_for_events(
+        self, block_hash: str, version: dict[str, Any],
+    ) -> RuntimeSnapshot:
+        """Select the execution runtime, including blocks before an upgrade.
+
+        The caller queries the version at the block's parent: an upgrade block's
+        post-state advertises the *next* runtime, not the one which made its events.
+        Historical metadata is fetched only on a version cache miss.
+        """
+        key = (int(version["specVersion"]), int(version["transactionVersion"]))
+        async with self._refresh_lock:
+            current = self.snapshot
+            if key == (current.runtime_version, current.transaction_version):
+                return current
+            if key not in self._event_snapshots:
+                historical = await asyncio.to_thread(
+                    self._load_default_snapshot, block_hash=block_hash,
+                )
+                if historical.substrate.get_block_hash(0) != current.substrate.get_block_hash(0):
+                    raise DeepXSDKError("Historical events metadata belongs to another chain")
+                if key != (historical.runtime_version, historical.transaction_version):
+                    raise DeepXSDKError("Historical events runtime version mismatch")
+                self._event_snapshots[key] = historical
+            self._event_snapshots.move_to_end(key)
+            while len(self._event_snapshots) > 4:
+                self._event_snapshots.popitem(last=False)
+            return self._event_snapshots[key]
 
     def _load_snapshot(self) -> RuntimeSnapshot:
         if self._snapshot_loader is not None:
@@ -282,7 +316,7 @@ class ExtrinsicEncoder:
             return snapshot
         return self._load_default_snapshot()
 
-    def _load_default_snapshot(self) -> RuntimeSnapshot:
+    def _load_default_snapshot(self, *, block_hash: str | None = None) -> RuntimeSnapshot:
         substrate: Any = None
         try:
             substrate_ws = (
@@ -296,7 +330,10 @@ class ExtrinsicEncoder:
                 substrate_ws,
                 timeout_ms=self._timeout_ms,
             )
-            substrate.init_runtime()
+            if block_hash is None:
+                substrate.init_runtime()
+            else:
+                substrate.init_runtime(block_hash=block_hash)
             _validate_initialized_substrate(substrate)
 
             genesis_hash = substrate.get_block_hash(0)
@@ -418,7 +455,8 @@ def _encode_pallet_call_sync(
         block_hash=snapshot.substrate.block_hash,
     )
     composed_ns = time.perf_counter_ns()
-    extrinsic = snapshot.substrate.create_signed_extrinsic(
+    extrinsic = _native_py.create_signed_extrinsic(
+        snapshot.substrate,
         call=call,
         keypair=snapshot.keypair,
         nonce=nonce,

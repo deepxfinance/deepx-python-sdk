@@ -9,6 +9,10 @@ Clients:
 - `ApiClient` — REST client for market data and the operations the chain clients don't cover.
 - `SDK` as a thin wrapper holding both clients.
 
+MVCC compatibility is being tested on `feat/mvcc-compat` (`0.2.7.dev0`).
+Default public-testnet endpoints remain unchanged. See the
+[MVCC testing and rollout guide](docs/mvcc-rollout.md) before using staging nodes.
+
 ## Install
 
 ### From source (development)
@@ -781,6 +785,12 @@ liq = chain.perp_market.get_liquidate_price(account="0xYOUR_SUBACCOUNT", market_
 oracle = chain.perp_market.get_oracle_price_all()
 ```
 
+On MVCC runtimes, filled/cancelled orders are removed from current chain storage.
+`order_info()` may therefore return an order-not-found error after successful
+execution. Use transaction events or the matching network's indexer/API for
+historical results. A missing order is not proof of a failed transaction and is
+not permission to resubmit it.
+
 ### Spot market view calls
 
 ```python
@@ -1040,6 +1050,12 @@ Token ids: `ETH=1, USDT=2, USDC=3, DAI=4, BNB=5, OKB=6` (`BRIDGE_TOKEN_MAP`). A 
 A runnable version is in [`examples/bridge_evm.py`](examples/bridge_evm.py).
 
 ## Error codes
+
+For decoded transaction events, error names come from the execution runtime's
+metadata. Numeric pallet/error indexes can change between runtimes; the static
+registry below is a fallback for paths without metadata, not a cross-runtime
+contract. An unresolved metadata error preserves its raw code without assigning
+a potentially incorrect legacy name.
 
 The SDK exposes two parallel error registries that mirror the upstream specs (`https://github.com/deepxfinance/notes-and-specs/blob/main/specs/error-codes.md`):
 

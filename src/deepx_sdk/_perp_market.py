@@ -1116,6 +1116,11 @@ def order_info(
     user: str,
     order_id: int,
 ) -> PerpOrderInfo:
+    """Read current on-chain order state, not an order-history archive.
+
+    MVCC runtimes prune terminal orders. A not-found response is not evidence
+    that submission failed; reconcile via transaction events or the indexer.
+    """
     # The order_id argument widened u32 -> u64, which changes the selector.
     # Deployments trailing that runtime still only expose the uint32 form.
     for arg_type in ("uint64", "uint32"):

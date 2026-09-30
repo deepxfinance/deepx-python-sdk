@@ -17,7 +17,8 @@ from ._rpc_transport import (
     rpc_request_options,
     substrate_ws_request_endpoints,
 )
-from ._errors import RPCError, parse_chain_error_code
+from ._errors import ChainError, RPCError, parse_chain_error_code
+from ._runtime_compat import create_signed_extrinsic, uses_events_map
 
 _Account = None
 _keccak = None
@@ -397,7 +398,10 @@ def submit_pallet_call_wait_event(
             f"submit extrinsic failed (block events): call={call_module}.{call_function}, "
             f"expected_event={pallet}::{event}, extrinsic_hash={extrinsic_hash}"
         )
-        _cerr = _chain_error_from_failed_attrs(failed_attrs, _ctx)
+        _cerr = _chain_error_from_failed_attrs(
+            failed_attrs, _ctx,
+            metadata=getattr(getattr(receipt, "substrate", None), "metadata", None),
+        )
         if _cerr is not None:
             raise _cerr
         raise RuntimeError(
@@ -776,7 +780,7 @@ def _submit_signed_pallet_call(
                 nonce = resolved if last_nonce is None else max(resolved, last_nonce + 1)
             _native_debug(f"_submit_signed_pallet_call:create_signed_extrinsic:start nonce={nonce}")
             t0 = time.monotonic()
-            extrinsic = substrate.create_signed_extrinsic(call=call, keypair=keypair, nonce=nonce)
+            extrinsic = create_signed_extrinsic(substrate, call=call, keypair=keypair, nonce=nonce)
             _native_debug(f"_submit_signed_pallet_call:create_signed_extrinsic:ok {time.monotonic()-t0:.2f}s")
             try:
                 _native_debug(
@@ -1087,7 +1091,7 @@ def build_signed_pallet_call_extrinsic(
         call_params=call_params,
     )
     nonce = int(nonce_ms) if nonce_ms is not None else int(time.time() * 1000)
-    extrinsic = substrate.create_signed_extrinsic(call=call, keypair=keypair, nonce=nonce)
+    extrinsic = create_signed_extrinsic(substrate, call=call, keypair=keypair, nonce=nonce)
     data = getattr(extrinsic, "data", extrinsic)
     if hasattr(data, "to_hex"):
         return data.to_hex()
@@ -1263,7 +1267,10 @@ def _ensure_receipt_success(receipt: Any, *, allow_unknown: bool = False) -> Non
             f"block_hash={getattr(receipt, 'block_hash', None)}, "
             f"extrinsic_idx={extrinsic_idx}"
         )
-        _cerr = _chain_error_from_failed_attrs(failed_attrs, _ctx)
+        _cerr = _chain_error_from_failed_attrs(
+            failed_attrs, _ctx,
+            metadata=getattr(getattr(receipt, "substrate", None), "metadata", None),
+        )
         if _cerr is not None:
             raise _cerr
         raise RuntimeError(
@@ -1548,7 +1555,9 @@ def _decode_dispatch_error_index(raw: Any) -> int | None:
     return None
 
 
-def _chain_error_from_failed_attrs(failed_attrs: Any, context: str) -> Any | None:
+def _chain_error_from_failed_attrs(
+    failed_attrs: Any, context: str, *, metadata: Any = None,
+) -> Any | None:
     """Build a typed ChainError from System::ExtrinsicFailed attributes.
 
     Returns None for non-Module dispatch errors (BadOrigin/Other/...) or
@@ -1567,7 +1576,24 @@ def _chain_error_from_failed_attrs(failed_attrs: Any, context: str) -> Any | Non
     error_index = _decode_dispatch_error_index(module.get("error"))
     if pallet_index is None or error_index is None:
         return None
-    return parse_chain_error_code(f"{int(pallet_index)}_{int(error_index)}", context)
+    code = f"{int(pallet_index)}_{int(error_index)}"
+    if metadata is not None:
+        # Numeric enum indexes are not stable across runtimes. Never override
+        # runtime metadata with a name from the static legacy registry.
+        try:
+            pallet = metadata.get_pallet_by_index(int(pallet_index))
+            errors = pallet.errors or []
+            for position, error in enumerate(errors):
+                value = getattr(error, "value", error)
+                if int(value.get("index", position)) == error_index:
+                    return ChainError(
+                        code=code, name=value["name"], pallet=pallet.name,
+                        message=context,
+                    )
+        except (AttributeError, KeyError, TypeError, ValueError):
+            pass
+        return ChainError(code=code, message=context)
+    return parse_chain_error_code(code, context)
 
 
 def _event_value(event_like: Any) -> dict[str, Any] | None:
@@ -1656,6 +1682,11 @@ def _events_from_system_events_query_storage_at(*, substrate: Any, block_hash: s
 
 
 def _events_from_system_events_map(*, substrate: Any, block_hash: str) -> list[dict[str, Any]]:
+    # Pin metadata to the execution runtime before deciding the storage layout.
+    if callable(getattr(substrate, "init_runtime", None)):
+        substrate.init_runtime(block_hash=block_hash)
+    if not uses_events_map(substrate):
+        return []
     number = _block_number(substrate=substrate, block_hash=block_hash)
     if number is None:
         raise RuntimeError("unable to resolve block number")

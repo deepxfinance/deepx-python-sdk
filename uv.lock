@@ -524,7 +524,7 @@ wheels = [
 
 [[package]]
 name = "deepx-python-sdk"
-version = "0.2.6"
+version = "0.2.7.dev0"
 source = { editable = "." }
 dependencies = [
     { name = "eth-abi" },
