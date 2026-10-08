@@ -13,6 +13,7 @@ import secrets
 
 import requests
 from scalecodec.base import ScaleBytes
+from substrateinterface import ExtrinsicReceipt
 
 from deepx_sdk import _native_py
 from deepx_sdk._async_encoder import ExtrinsicEncoder, _encode_pallet_call_sync
@@ -20,6 +21,47 @@ from deepx_sdk._async_tracker import TransactionTracker
 from deepx_sdk._perp_market import _perp_cancel_params, _perp_place_params
 from deepx_sdk._runtime_compat import _ImmortalMetadata, uses_events_map
 from deepx_sdk._spot_market import _spot_cancel_params, _spot_place_params
+
+
+def check_sync_receipts(url: str, block_hash: str) -> list[dict]:
+    """Replay finalized receipts without decoding or broadcasting extrinsics."""
+    ws = url.replace("https://", "wss://").replace("http://", "ws://")
+    substrate = _native_py._create_substrate(
+        _native_py._get_substrate_interface_cls(), ws, timeout_ms=20_000,
+    )
+    try:
+        events, error = _native_py._load_block_events(substrate=substrate, block_hash=block_hash)
+        values = [_native_py._event_value(event) for event in events]
+        successful = [event for event in values if event and event.get("module_id") == "System"
+                      and event.get("event_id") == "ExtrinsicSuccess"]
+        assert successful, f"No successful extrinsic for receipt replay: {error}"
+        block = substrate.rpc_request("chain_getBlock", [block_hash])["result"]["block"]
+        results = []
+        for event in successful[:3]:
+            index = _native_py._event_extrinsic_idx(event)
+            assert index is not None
+            raw = block["extrinsics"][index]
+            tx_hash = "0x" + hashlib.blake2b(bytes.fromhex(raw[2:]), digest_size=32).hexdigest()
+            receipt = ExtrinsicReceipt(substrate=substrate, extrinsic_hash=tx_hash, block_hash=block_hash)
+            try:
+                upstream_status = receipt.is_success
+                upstream_error = None
+            except Exception as exc:
+                upstream_status = None
+                upstream_error = f"{type(exc).__name__}: {exc}"
+            assert _native_py._receipt_extrinsic_idx(receipt) == index
+            _native_py._ensure_receipt_success(receipt)
+            found = _native_py._receipt_if_block_contains(
+                substrate=substrate, receipt_cls=ExtrinsicReceipt, extrinsic_hash=tx_hash,
+                block_hash=block_hash, finalized=True,
+            )
+            assert found is not None and found.extrinsic_idx == index
+            results.append({"extrinsic_hash": tx_hash, "extrinsic_idx": index,
+                            "upstream_status": upstream_status, "upstream_error": upstream_error,
+                            "sdk_status": "success"})
+        return results
+    finally:
+        substrate.close()
 
 
 def check(url: str) -> dict:
@@ -132,7 +174,8 @@ def check(url: str) -> dict:
                 "era": "CheckNonceEra" if mvcc else "legacy",
                 "events_layout": "EventsMap" if uses_events_map(substrate) else "Events",
                 "signed_and_verified": len(calls), "decoded_events": len(events.events),
-                "lending_error_13": error.name, "submitted": 0}
+                "lending_error_13": error.name, "receipt_block": block_hash,
+                "sync_receipts": check_sync_receipts(url, block_hash), "submitted": 0}
     finally:
         session.close()
 

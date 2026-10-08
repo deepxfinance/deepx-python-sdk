@@ -253,3 +253,166 @@ def test_historical_snapshot_rejects_inconsistent_source(loaded):
             await encoder.snapshot_for_events("block", {"specVersion": 371, "transactionVersion": 1})
         assert not encoder._event_snapshots
     asyncio.run(run())
+
+
+class RawBlockReceiptSubstrate:
+    """MVCC events decode, but upstream full-block extrinsic decoding fails."""
+
+    def __init__(self, events):
+        self.raw_extrinsics = ["0x010203", "0x040506"]
+        self.events = [
+            SimpleNamespace(value=event, extrinsic_idx=event["extrinsic_idx"])
+            for event in events
+        ]
+        self.requests = []
+
+    def get_block(self, **kwargs):
+        raise ValueError("Index '19' not present in Enum type mapping")
+
+    def get_events(self, *, block_hash):
+        assert block_hash == "0xblock"
+        return self.events
+
+    def rpc_request(self, method, params):
+        self.requests.append((method, params))
+        assert method == "chain_getBlock" and params == ["0xblock"]
+        return {"result": {"block": {"extrinsics": self.raw_extrinsics}}}
+
+
+class RawBlockReceipt:
+    error_message = None
+
+    def __init__(self, *, substrate, extrinsic_hash, block_hash, extrinsic_idx=None,
+                 block_number=None, finalized=False):
+        self.substrate = substrate
+        self.extrinsic_hash = extrinsic_hash
+        self.block_hash = block_hash
+        self._index = extrinsic_idx
+        self.block_number = block_number
+        self.finalized = finalized
+
+    @property
+    def extrinsic_idx(self):
+        if self._index is None:
+            self.substrate.get_block(block_hash=self.block_hash)
+        return self._index
+
+    @property
+    def triggered_events(self):
+        index = self.extrinsic_idx
+        return [event for event in self.substrate.events if event.extrinsic_idx == index]
+
+    @property
+    def is_success(self):
+        # Model the upstream lazy lookup that fails before event processing.
+        self.triggered_events
+        return None
+
+
+def raw_block_receipt(events):
+    import hashlib
+
+    substrate = RawBlockReceiptSubstrate(events)
+    tx_hash = "0x" + hashlib.blake2b(bytes.fromhex("040506"), digest_size=32).hexdigest()
+    return RawBlockReceipt(substrate=substrate, extrinsic_hash=tx_hash, block_hash="0xblock")
+
+
+def system_event(name, *, index=1, attributes=None):
+    return {"module_id": "System", "event_id": name, "extrinsic_idx": index,
+            "attributes": attributes or {}}
+
+
+def test_sync_receipt_index_uses_raw_hash_when_mvcc_decode_fails():
+    receipt = raw_block_receipt([])
+    assert _native_py._receipt_extrinsic_idx(receipt) == 1
+    assert receipt.substrate.requests == [("chain_getBlock", ["0xblock"])]
+
+
+def test_sync_inclusion_scan_uses_raw_extrinsics():
+    original = raw_block_receipt([system_event("ExtrinsicSuccess")])
+    receipt = _native_py._receipt_if_block_contains(
+        substrate=original.substrate, receipt_cls=RawBlockReceipt,
+        extrinsic_hash=original.extrinsic_hash, block_hash="0xblock", finalized=True,
+    )
+    assert receipt is not None
+    assert receipt.extrinsic_idx == 1
+    assert receipt.finalized is True
+
+
+def test_sync_receipt_status_recovers_from_mvcc_decode_error():
+    receipt = raw_block_receipt([system_event("ExtrinsicSuccess")])
+    _native_py._ensure_receipt_success(receipt)
+
+
+def test_sync_receipt_status_propagates_scoped_failure_after_decode_error():
+    receipt = raw_block_receipt([
+        system_event("ExtrinsicSuccess", index=0),
+        system_event("ExtrinsicFailed", attributes={"dispatch_error": "BadOrigin"}),
+    ])
+    with pytest.raises(RuntimeError, match="submit extrinsic failed"):
+        _native_py._ensure_receipt_success(receipt)
+
+
+@pytest.mark.parametrize("events", [[], [system_event("ExtrinsicSuccess", index=0)],
+    [{"module_id": "Subaccount", "event_id": "NewUserRecord", "extrinsic_idx": 1,
+      "attributes": {}}]])
+def test_sync_receipt_inclusion_without_execution_status_is_not_success(events):
+    receipt = raw_block_receipt(events)
+    with pytest.raises(RuntimeError, match="status unknown"):
+        _native_py._ensure_receipt_success(receipt)
+
+
+@pytest.mark.parametrize("path", ["pallet", "ethereum"])
+def test_sync_wait_event_recovers_from_mvcc_receipt_decode_error(monkeypatch, path):
+    receipt = raw_block_receipt([
+        {"module_id": "Subaccount", "event_id": "NewUserRecord", "extrinsic_idx": 0,
+         "attributes": {"user": "other"}},
+        {"module_id": "Subaccount", "event_id": "NewUserRecord", "extrinsic_idx": 1,
+         "attributes": {"user": "target"}},
+        system_event("ExtrinsicSuccess"),
+    ])
+    if path == "pallet":
+        monkeypatch.setattr(_native_py, "_submit_signed_pallet_call", lambda **kwargs: receipt)
+        result = _native_py.submit_pallet_call_wait_event(
+            substrate_ws="ws://unused", private_key="0x" + "11" * 32,
+            call_module="Subaccount", call_function="initialize_subaccount", call_params={},
+            pallet="Subaccount", event="NewUserRecord",
+        )
+    else:
+        monkeypatch.setattr(_native_py, "_submit_ethereum_transact", lambda **kwargs: receipt)
+        monkeypatch.setattr(_native_py, "_decode_signed_rlp_bytes_to_transaction_v2", lambda _: {})
+        result = _native_py.submit_signed_tx_wait_event(
+            substrate_ws="ws://unused", signed_tx_hex="0x010203", signer="0x" + "11" * 20,
+            pallet="Subaccount", event="NewUserRecord",
+        )
+    assert result.extrinsic_hash == receipt.extrinsic_hash
+    assert result.fields_json == '{"user": "target"}'
+
+
+@pytest.mark.parametrize("allow_unknown", [False, True])
+def test_sync_receipt_failure_is_not_hidden_by_expected_business_event(allow_unknown):
+    receipt = raw_block_receipt([
+        {"module_id": "Subaccount", "event_id": "NewUserRecord", "extrinsic_idx": 1,
+         "attributes": {"user": "target"}},
+        system_event("ExtrinsicFailed", attributes={"dispatch_error": "BadOrigin"}),
+    ])
+    with pytest.raises(RuntimeError, match="submit extrinsic failed"):
+        _native_py._ensure_receipt_success(receipt, allow_unknown=allow_unknown)
+
+
+@pytest.mark.parametrize("response", [{"result": None}, {"error": {"message": "unavailable"}},
+    {"result": {"block": {"extrinsics": ["not hex"]}}}])
+def test_sync_receipt_unavailable_raw_block_is_not_success(monkeypatch, response):
+    receipt = raw_block_receipt([system_event("ExtrinsicSuccess")])
+    monkeypatch.setattr(receipt.substrate, "rpc_request", lambda *_: response)
+    assert _native_py._receipt_extrinsic_idx(receipt) is None
+    with pytest.raises(RuntimeError, match="status unknown"):
+        _native_py._ensure_receipt_success(receipt)
+
+
+def test_sync_receipt_other_transactions_do_not_supply_an_index():
+    receipt = raw_block_receipt([system_event("ExtrinsicSuccess")])
+    receipt.extrinsic_hash = "0x" + "00" * 32
+    assert _native_py._receipt_extrinsic_idx(receipt) is None
+    with pytest.raises(RuntimeError, match="status unknown"):
+        _native_py._ensure_receipt_success(receipt)

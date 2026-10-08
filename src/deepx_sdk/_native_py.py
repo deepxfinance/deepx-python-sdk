@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import queue
@@ -225,8 +226,7 @@ def submit_signed_tx_wait_event(
     _native_debug(
         "submit_signed_tx_wait_event:receipt "
         f"extrinsic_hash={getattr(receipt, 'extrinsic_hash', None)} "
-        f"block_hash={getattr(receipt, 'block_hash', None)} "
-        f"status={getattr(receipt, 'is_success', None)}"
+        f"block_hash={getattr(receipt, 'block_hash', None)}"
     )
 
     receipt_events, receipt_events_err = _safe_triggered_events(receipt)
@@ -1020,24 +1020,21 @@ def _receipt_if_block_contains(
     try:
         if block_hash is None:
             block_hash = substrate.get_block_hash(block_number)
-        block = substrate.get_block(block_hash=block_hash)
+        idx = _raw_block_extrinsic_idx(
+            substrate=substrate, block_hash=block_hash, extrinsic_hash=extrinsic_hash,
+        )
     except Exception:
         return None
-    extrinsics = (block or {}).get("extrinsics", [])
-    for idx, item in enumerate(extrinsics):
-        item_hash = getattr(item, "extrinsic_hash", None)
-        if item_hash is None:
-            continue
-        if "0x" + item_hash.hex() == extrinsic_hash:
-            return receipt_cls(
-                substrate=substrate,
-                extrinsic_hash=extrinsic_hash,
-                block_hash=block_hash,
-                block_number=block_number,
-                extrinsic_idx=idx,
-                finalized=finalized,
-            )
-    return None
+    if idx is None:
+        return None
+    return receipt_cls(
+        substrate=substrate,
+        extrinsic_hash=extrinsic_hash,
+        block_hash=block_hash,
+        block_number=block_number,
+        extrinsic_idx=idx,
+        finalized=finalized,
+    )
 
 
 def _is_outdated_transaction_error(exc: BaseException) -> bool:
@@ -1197,10 +1194,14 @@ def _compose_ethereum_transact_call(substrate: Any, tx: dict[str, Any], signer: 
 
 
 def _ensure_receipt_success(receipt: Any, *, allow_unknown: bool = False) -> None:
+    status_error: str | None = None
     try:
         success = getattr(receipt, "is_success", None)
     except Exception as exc:
-        raise RuntimeError(f"unable to determine extrinsic status: {exc}") from exc
+        # Upstream locates the index by decoding the whole block. Non-standard
+        # signed extensions can break that even when events decode correctly.
+        success = None
+        status_error = str(exc)
 
     if success is True:
         return
@@ -1223,14 +1224,8 @@ def _ensure_receipt_success(receipt: Any, *, allow_unknown: bool = False) -> Non
             f"triggered_events_error={events_err}"
         )
 
-    # Some runtimes/clients may not expose System::ExtrinsicSuccess/Failed in a way
-    # substrate-interface can infer; keep going and rely on event matching in caller.
-    if allow_unknown:
-        return
-
-    # For submit_signed_tx (no expected pallet/event), try block-level events as a
-    # secondary status source. This is required on runtimes where triggered_events is
-    # empty but System.EventsMap still contains decodable events.
+    # Resolve status from scoped block events when upstream cannot infer it.
+    # Both MVCC System.Events and legacy System.EventsMap use this fallback.
     block_events, block_events_err = _safe_block_events(receipt)
     extrinsic_idx = _receipt_extrinsic_idx(receipt)
     scoped_events = _filter_events_for_extrinsic(block_events, extrinsic_idx=extrinsic_idx)
@@ -1281,16 +1276,8 @@ def _ensure_receipt_success(receipt: Any, *, allow_unknown: bool = False) -> Non
             f"attributes={_json_ready(failed_attrs)}"
         )
 
-    # If we can scope events to the extrinsic and saw either an explicit
-    # ExtrinsicSuccess or any scoped events without ExtrinsicFailed, treat it as success.
-    if extrinsic_idx is not None and scoped_events and (has_success or not has_failed):
-        return
-
-    # Some dev nodes return enough block data to locate the extrinsic but
-    # too few decodable events to scope System::ExtrinsicSuccess. For no-event
-    # calls, inclusion plus absence of an explicit failure is the strongest
-    # status available.
-    if extrinsic_idx is not None and getattr(receipt, "block_hash", None) and not has_failed:
+    # Inclusion and business events alone do not prove successful dispatch.
+    if has_success or allow_unknown:
         return
 
     if err:
@@ -1305,7 +1292,8 @@ def _ensure_receipt_success(receipt: Any, *, allow_unknown: bool = False) -> Non
         f"extrinsic_idx={extrinsic_idx}, "
         f"block_events_len={len(block_events)}, "
         f"scoped_events_len={len(scoped_events)}, "
-        f"block_events_error={block_events_err}"
+        f"block_events_error={block_events_err}, "
+        f"receipt_status_error={status_error}"
     )
 
 
@@ -1444,14 +1432,43 @@ def _block_number(*, substrate: Any, block_hash: Any) -> int | None:
     return _parse_int_like(header.get("number"))
 
 
+def _raw_block_extrinsic_idx(
+    *, substrate: Any, block_hash: str, extrinsic_hash: str,
+) -> int | None:
+    # Hash the exact SCALE bytes, as the async tracker does. Do not decode calls
+    # or signed extensions just to locate a receipt (notably CheckNonceEra).
+    response = substrate.rpc_request("chain_getBlock", [block_hash])
+    if "error" in response:
+        raise RuntimeError(f"chain_getBlock: {response['error']}")
+    extrinsics = response["result"]["block"]["extrinsics"]
+    for idx, raw in enumerate(extrinsics):
+        tx_hash = "0x" + hashlib.blake2b(_decode_hex_bytes(raw), digest_size=32).hexdigest()
+        if tx_hash.lower() == extrinsic_hash.lower():
+            return idx
+    return None
+
+
 def _receipt_extrinsic_idx(receipt: Any) -> int | None:
     for key in ("extrinsic_idx", "extrinsic_index", "extrinsic_id"):
-        raw = getattr(receipt, key, None)
+        try:
+            raw = getattr(receipt, key, None)
+        except Exception:
+            continue
         if raw is None:
             continue
         idx = _parse_int_like(raw)
         if idx is not None:
             return idx
+    substrate = getattr(receipt, "substrate", None)
+    block_hash = getattr(receipt, "block_hash", None)
+    extrinsic_hash = getattr(receipt, "extrinsic_hash", None)
+    if substrate is not None and block_hash and extrinsic_hash:
+        try:
+            return _raw_block_extrinsic_idx(
+                substrate=substrate, block_hash=block_hash, extrinsic_hash=extrinsic_hash,
+            )
+        except Exception as exc:
+            _native_debug(f"_receipt_extrinsic_idx:raw block lookup failed: {exc}")
     return None
 
 
