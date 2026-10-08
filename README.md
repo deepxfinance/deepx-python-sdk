@@ -9,8 +9,8 @@ Clients:
 - `ApiClient` — REST client for market data and the operations the chain clients don't cover.
 - `SDK` as a thin wrapper holding both clients.
 
-MVCC compatibility is being tested on `feat/mvcc-compat` (`0.2.7.dev0`).
-Default public-testnet endpoints remain unchanged. See the
+MVCC compatibility is available as an opt-in `0.2.7rc1` prerelease. It is not a
+production cutover. Default public-testnet endpoints remain unchanged. See the
 [MVCC testing and rollout guide](docs/mvcc-rollout.md) before using staging nodes.
 
 ## Install

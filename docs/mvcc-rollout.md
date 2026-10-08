@@ -1,20 +1,18 @@
 # MVCC SDK testing and rollout
 
-Status: development / opt-in, September 30, 2026. This is not a production cutover.
+Status: opt-in release candidate, October 8, 2026. This is not a production cutover.
 
 ## Branch and version policy
 
-- Develop on `feat/mvcc-compat`, based on stable SDK commit `19f4c0f`.
-- Use package version `0.2.7.dev0` during development. Pin the exact commit for bot
-  tests; a moving branch name or repeated development version is not reproducible.
-- Leave `main`, `dev`, existing release tags, and default network endpoints alone
-  while this adaptation is being verified. Never move `v0.2.6` to new code.
-- After legacy + MVCC integration tests pass, merge into `dev`. Create a new,
-  immutable candidate such as `v0.2.7rc1` with package version `0.2.7rc1`; subsequent
-  fixes get `rc2`, etc. Publish candidates only as prereleases, not stable releases.
-- Once chain deployment and the acceptance checks below are confirmed, merge the
-  tested candidate into `main`, set version `0.2.7`, and publish `v0.2.7`. Recheck
-  the available version before tagging if another release has occurred meanwhile.
+- Development began on `feat/mvcc-compat`, based on stable SDK commit `19f4c0f`.
+- `dev` and `main` include the opt-in compatibility changes at package version
+  `0.2.7rc1`. This merge does not mean the MVCC chain/backend rollout has passed
+  acceptance or changed the default endpoints. Existing `v0.2.6` remains immutable.
+- `v0.2.7rc1` is an immutable prerelease for explicit testing; subsequent fixes
+  should use `rc2`, etc. Pin exact candidate tags for bot tests.
+- Once chain deployment and the acceptance checks below are confirmed, set version
+  `0.2.7` and publish `v0.2.7`. Recheck the available version before tagging if
+  another release has occurred meanwhile.
 
 Changing chain internals does not require advertising a new SDK `net` option.
 Compatibility is selected from metadata, not runtime-version thresholds or hostnames.
