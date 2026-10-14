@@ -142,7 +142,6 @@ def _patch_request(monkeypatch: pytest.MonkeyPatch, api: dx.ApiClient) -> dict[s
                 limit=10,
                 start_time=100,
                 end_time=200,
-                sort="DESC",
             ),
             "/v1/account/subaccounts/0xsub/perp/positions/history",
             {
@@ -150,7 +149,6 @@ def _patch_request(monkeypatch: pytest.MonkeyPatch, api: dx.ApiClient) -> dict[s
                 "limit": 10,
                 "startTime": 100,
                 "endTime": 200,
-                "sort": "DESC",
             },
         ),
         (
@@ -158,16 +156,14 @@ def _patch_request(monkeypatch: pytest.MonkeyPatch, api: dx.ApiClient) -> dict[s
                 address="0xsub",
                 symbol="ETH-USDC",
                 side="buy",
-                from_id=9,
-                sort="DESC",
+                cursor="page-9",
                 limit=10,
             ),
             "/v1/account/subaccounts/0xsub/perp/orders",
             {
                 "symbol": "ETH-USDC",
                 "side": "Buy",
-                "fromId": 9,
-                "sort": "DESC",
+                "cursor": "page-9",
                 "limit": 10,
             },
         ),
@@ -183,8 +179,7 @@ def _patch_request(monkeypatch: pytest.MonkeyPatch, api: dx.ApiClient) -> dict[s
             lambda api: api.v1.account.subaccount_perp_trades(
                 address="0xsub",
                 symbol="ETH-USDC",
-                from_id=10,
-                sort="DESC",
+                cursor="page-10",
                 start_time=1,
                 end_time=2,
                 limit=5,
@@ -192,8 +187,7 @@ def _patch_request(monkeypatch: pytest.MonkeyPatch, api: dx.ApiClient) -> dict[s
             "/v1/account/subaccounts/0xsub/perp/trades",
             {
                 "symbol": "ETH-USDC",
-                "fromId": 10,
-                "sort": "DESC",
+                "cursor": "page-10",
                 "startTime": 1,
                 "endTime": 2,
                 "limit": 5,
@@ -213,11 +207,10 @@ def _patch_request(monkeypatch: pytest.MonkeyPatch, api: dx.ApiClient) -> dict[s
                 address="0xsub",
                 symbol="ETH/USDC",
                 side="buy",
-                sort="ASC",
                 limit=20,
             ),
             "/v1/account/subaccounts/0xsub/spot/orders",
-            {"symbol": "ETH/USDC", "side": "Buy", "sort": "ASC", "limit": 20},
+            {"symbol": "ETH/USDC", "side": "Buy", "limit": 20},
         ),
         (
             lambda api: api.v1.account.subaccount_spot_open_orders(
@@ -275,7 +268,7 @@ def _patch_request(monkeypatch: pytest.MonkeyPatch, api: dx.ApiClient) -> dict[s
                 limit=100,
                 start_time=1,
                 end_time=2,
-                from_id=9,
+                cursor="page-9",
                 change_type="deposit,withdraw",
             ),
             "/v1/account/subaccounts/0xsub/balance-events",
@@ -283,7 +276,7 @@ def _patch_request(monkeypatch: pytest.MonkeyPatch, api: dx.ApiClient) -> dict[s
                 "limit": 100,
                 "startTime": 1,
                 "endTime": 2,
-                "cursor": 9,
+                "cursor": "page-9",
                 "changeType": "deposit,withdraw",
             },
         ),
@@ -305,7 +298,7 @@ def _patch_request(monkeypatch: pytest.MonkeyPatch, api: dx.ApiClient) -> dict[s
                 "startTime": 1,
                 "endTime": 2,
                 "liquidator": "0xliq",
-                "liquidationType": "perp",
+                "liqType": "perp",
                 "symbol": "ETH-USDC",
             },
         ),
@@ -358,9 +351,9 @@ def _patch_request(monkeypatch: pytest.MonkeyPatch, api: dx.ApiClient) -> dict[s
             },
         ),
         (
-            lambda api: api.v1.spot.trades(symbol="ETH-USDC", from_id=7, cursor=8, limit=15),
+            lambda api: api.v1.spot.trades(symbol="ETH-USDC", cursor="page-8", limit=15),
             "/v1/spot/markets/ETH-USDC/trades",
-            {"fromId": 7, "cursor": 8, "limit": 15},
+            {"cursor": "page-8", "limit": 15},
         ),
         (
             lambda api: api.v1.spot.orderbook(symbol="ETH-USDC", limit=100, merge_level=1),
@@ -384,9 +377,9 @@ def _patch_request(monkeypatch: pytest.MonkeyPatch, api: dx.ApiClient) -> dict[s
             {"interval": "5m", "limit": 50, "priceType": "index"},
         ),
         (
-            lambda api: api.v1.perp.trades(symbol="ETH-USDC", limit=25, from_id=3, cursor=4),
+            lambda api: api.v1.perp.trades(symbol="ETH-USDC", limit=25, cursor="page-4"),
             "/v1/perp/markets/ETH-USDC/trades",
-            {"limit": 25, "fromId": 3, "cursor": 4},
+            {"limit": 25, "cursor": "page-4"},
         ),
         (
             lambda api: api.v1.perp.orderbook(symbol="ETH-USDC", limit=50, merge_level=2),
@@ -405,7 +398,6 @@ def _patch_request(monkeypatch: pytest.MonkeyPatch, api: dx.ApiClient) -> dict[s
                 start_time=10,
                 end_time=20,
                 limit=100,
-                sort="ASC",
             ),
             "/v1/perp/markets/ETH-USDC/open-interest/history",
             {
@@ -413,7 +405,6 @@ def _patch_request(monkeypatch: pytest.MonkeyPatch, api: dx.ApiClient) -> dict[s
                 "startTime": 10,
                 "endTime": 20,
                 "limit": 100,
-                "sort": "ASC",
             },
         ),
         (
@@ -481,7 +472,6 @@ def _patch_request(monkeypatch: pytest.MonkeyPatch, api: dx.ApiClient) -> dict[s
                 start_time=10,
                 end_time=20,
                 limit=100,
-                sort="DESC",
             ),
             "/v1/lending/markets/USDC/status/history",
             {
@@ -489,7 +479,6 @@ def _patch_request(monkeypatch: pytest.MonkeyPatch, api: dx.ApiClient) -> dict[s
                 "startTime": 10,
                 "endTime": 20,
                 "limit": 100,
-                "sort": "DESC",
             },
         ),
     ],
@@ -1018,8 +1007,8 @@ def test_api_v1_history_limit_validation() -> None:
         api.v1.perp.funding_rate_history(symbol="ETH-USDC", limit=5001)
     with pytest.raises(ValueError, match="limit must be between 1 and 5000"):
         api.v1.perp.long_short_ratio_history(symbol="ETH-USDC", limit=5001)
-    with pytest.raises(ValueError, match="limit must be between 1 and 5000"):
-        api.v1.lending.market_status_history(asset="USDC", limit=5001)
+    with pytest.raises(ValueError, match="limit must be between 1 and 500"):
+        api.v1.lending.market_status_history(asset="USDC", limit=501)
 
 
 # -----------------------------------------------------------------------------

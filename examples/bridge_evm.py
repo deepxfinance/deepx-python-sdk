@@ -1,4 +1,4 @@
-"""EVM -> EVM bridge example: DeepX (chain 4846) -> Ethereum Sepolia.
+"""EVM -> EVM bridge example: DeepX public testnet (chain 4856) -> Ethereum Sepolia.
 
 DeepX's MultiTokenBridge is a Bool Network consumer. The flow:
 
@@ -35,23 +35,20 @@ from deepx_sdk.bridge import BridgeApi
 # ---------------------------------------------------------------------------
 # 1. Configuration
 #
-# The DeepX side (RPC, chain id, bridge contract, sign API) needs no
-# configuration. SDK development only: set the BRIDGE_SRC_* trio to point at
-# the internal deployment.
+# Set BRIDGE_SRC and BRIDGE_DST to the verified contracts for this pair.
+# Override BRIDGE_SRC_RPC / BRIDGE_SRC_CHAIN_ID for another deployment.
 # ---------------------------------------------------------------------------
 
 SRC_RPC = optional("BRIDGE_SRC_RPC")
 SRC_CHAIN_ID = optional("BRIDGE_SRC_CHAIN_ID")
-SRC_BRIDGE = optional("BRIDGE_SRC")
+SRC_BRIDGE = require("BRIDGE_SRC")
 SIGN_API_BASE = optional("SIGN_API_BASE")
 
 DST_RPC = optional(
     "BRIDGE_DST_RPC", "https://ethereum-sepolia-rpc.publicnode.com"
 )
 DST_CHAIN_ID = int(optional("BRIDGE_DST_CHAIN_ID", "11155111"))
-DST_BRIDGE = optional(
-    "BRIDGE_DST", "0x70e6adc5c6c2f131b32ce8347876e6c1af4f65e8"
-)
+DST_BRIDGE = require("BRIDGE_DST")
 
 PRIVATE_KEY = require("PRIVATE_KEY")
 AMOUNT_USDC = Decimal(optional("BRIDGE_AMOUNT_USDC", "1"))
@@ -72,7 +69,7 @@ dst = BridgeApi(
     contract_address=DST_BRIDGE,
 )
 
-# Blank values fall back to the built-in deployment.
+# RPC and chain ID default to the public testnet; the contract is explicit.
 src = BridgeApi(
     private_key=PRIVATE_KEY,
     rpc_url=SRC_RPC,

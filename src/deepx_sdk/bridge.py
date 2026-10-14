@@ -744,10 +744,10 @@ def _wait_bridge_received(
 class BridgeApi:
     """MultiTokenBridge client.
 
-    With no arguments it targets the default DeepX network — RPC endpoint,
-    chain id, and bridge contract all resolve from `net`. Pass explicit
-    `rpc_url` / `chain_id` / `contract_address` to override (e.g. for the
-    external side of a bridge pair such as Sepolia).
+    RPC endpoint and chain id resolve from `net`. Pass explicit `rpc_url` /
+    `chain_id` / `contract_address` to override (e.g. for the external side of
+    a bridge pair such as Sepolia). A verified explicit contract address is
+    required when the network registry has no default bridge.
     """
 
     rpc_url: str | None = None
@@ -765,6 +765,11 @@ class BridgeApi:
             self.chain_id = config.chain_id
         if _is_blank(self.contract_address):
             self.contract_address = config.bridge_contract
+        if _is_blank(self.contract_address):
+            raise ValueError(
+                "No bridge contract is configured for this network; "
+                "pass a verified contract_address explicitly"
+            )
 
     def get_bridge_fee(
         self,

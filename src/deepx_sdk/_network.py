@@ -40,8 +40,8 @@ def _build_networks() -> dict[str, NetworkConfig]:
             ws_base_url="wss://ws-api-testnet.deepx.fi",
             substrate_ws="wss://rpc-testnet.deepx.fi",
             evm_rpc_url="https://rpc-testnet.deepx.fi",
-            chain_id=4846,
-            bridge_contract="0x874c408fd66117a2edb953fe68cadccd675e5c2c",
+            chain_id=4856,
+            bridge_contract="",
         ),
         "mainnet": _mainnet_config(),
     }

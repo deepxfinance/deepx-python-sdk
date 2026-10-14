@@ -26,6 +26,17 @@ def _validate_int_limit(name: str, limit: Optional[int], min_val: int, max_val: 
         raise ValueError(f"{name} must be between {min_val} and {max_val}")
 
 
+def _reject_removed_params(**params: Any) -> None:
+    for name, value in params.items():
+        if value is not None:
+            raise ValueError(f"{name} is no longer supported by this endpoint")
+
+
+def _validate_cursor(cursor: Optional[str]) -> None:
+    if cursor is not None and (not isinstance(cursor, str) or not cursor.strip()):
+        raise ValueError("cursor must be a non-empty string from nextCursor")
+
+
 def _validate_candle_limit(limit: Optional[int]) -> None:
     _validate_int_limit("limit", limit, 1, 500)
 
@@ -227,6 +238,22 @@ class V1Client:
     def time(self) -> Any:
         return self._client.request("GET", "/v1/time")
 
+    def stats(self) -> Any:
+        """Return the common-cutoff protocol snapshot, preserving decimal strings.
+
+        The snapshot may lag the chain. Incomplete or stale statistics raise
+        the backend's service-unavailable error rather than returning zeros.
+        """
+        return self._client.request("GET", "/v1/stats")
+
+    def prices(self, *, asset: Optional[str] = None) -> Any:
+        """Return USDC-denominated index prices, optionally filtered by asset."""
+        if asset is not None:
+            _require_value("asset", asset)
+        return self._client.request(
+            "GET", "/v1/prices", params=_clean_params({"asset": asset}) or None,
+        )
+
 
 @dataclass
 class WsV1Client:
@@ -324,7 +351,7 @@ class AccountV1Client:
     ) -> Any:
         _require_value("address", address)
         _validate_int_limit("limit", limit, 1, 500)
-        _validate_sort(sort)
+        _reject_removed_params(sort=sort)
         _validate_start_end(start_time, end_time)
         params = _clean_params(
             {
@@ -332,7 +359,6 @@ class AccountV1Client:
                 "limit": limit,
                 "start_time": start_time,
                 "end_time": end_time,
-                "sort": sort,
             }
         )
         return self._client.request(
@@ -349,15 +375,16 @@ class AccountV1Client:
         side: Optional[str] = None,
         limit: Optional[int] = None,
         from_id: Optional[int] = None,
-        cursor: Optional[int] = None,
+        cursor: Optional[str] = None,
         start_time: Optional[int] = None,
         end_time: Optional[int] = None,
         sort: Optional[str] = None,
     ) -> Any:
         _require_value("address", address)
         _validate_int_limit("limit", limit, 1, 500)
-        _validate_sort(sort)
+        _reject_removed_params(from_id=from_id, sort=sort)
         _validate_start_end(start_time, end_time)
+        _validate_cursor(cursor)
         if side is not None:
             side = _normalize_order_side(side)
         params = _clean_params(
@@ -365,11 +392,9 @@ class AccountV1Client:
                 "symbol": symbol,
                 "side": side,
                 "limit": limit,
-                "from_id": from_id,
                 "cursor": cursor,
                 "start_time": start_time,
                 "end_time": end_time,
-                "sort": sort,
             }
         )
         return self._client.request(
@@ -399,24 +424,23 @@ class AccountV1Client:
         symbol: Optional[str] = None,
         limit: Optional[int] = None,
         from_id: Optional[int] = None,
-        cursor: Optional[int] = None,
+        cursor: Optional[str] = None,
         start_time: Optional[int] = None,
         end_time: Optional[int] = None,
         sort: Optional[str] = None,
     ) -> Any:
         _require_value("address", address)
         _validate_int_limit("limit", limit, 1, 500)
-        _validate_sort(sort)
+        _reject_removed_params(from_id=from_id, sort=sort)
         _validate_start_end(start_time, end_time)
+        _validate_cursor(cursor)
         params = _clean_params(
             {
                 "symbol": symbol,
                 "limit": limit,
-                "from_id": from_id,
                 "cursor": cursor,
                 "start_time": start_time,
                 "end_time": end_time,
-                "sort": sort,
             }
         )
         return self._client.request(
@@ -432,24 +456,21 @@ class AccountV1Client:
         symbol: Optional[str] = None,
         limit: Optional[int] = None,
         from_id: Optional[int] = None,
-        cursor: Optional[int] = None,
+        cursor: Optional[str] = None,
         start_time: Optional[int] = None,
         end_time: Optional[int] = None,
         sort: Optional[str] = None,
     ) -> Any:
         _require_value("address", address)
         _validate_int_limit("limit", limit, 1, 500)
-        _validate_sort(sort)
+        _reject_removed_params(from_id=from_id, cursor=cursor, sort=sort)
         _validate_start_end(start_time, end_time)
         params = _clean_params(
             {
                 "symbol": symbol,
                 "limit": limit,
-                "from_id": from_id,
-                "cursor": cursor,
                 "start_time": start_time,
                 "end_time": end_time,
-                "sort": sort,
             }
         )
         return self._client.request(
@@ -466,15 +487,16 @@ class AccountV1Client:
         side: Optional[str] = None,
         limit: Optional[int] = None,
         from_id: Optional[int] = None,
-        cursor: Optional[int] = None,
+        cursor: Optional[str] = None,
         start_time: Optional[int] = None,
         end_time: Optional[int] = None,
         sort: Optional[str] = None,
     ) -> Any:
         _require_value("address", address)
         _validate_int_limit("limit", limit, 1, 500)
-        _validate_sort(sort)
+        _reject_removed_params(from_id=from_id, sort=sort)
         _validate_start_end(start_time, end_time)
+        _validate_cursor(cursor)
         if side is not None:
             side = _normalize_order_side(side)
         params = _clean_params(
@@ -482,11 +504,9 @@ class AccountV1Client:
                 "symbol": symbol,
                 "side": side,
                 "limit": limit,
-                "from_id": from_id,
                 "cursor": cursor,
                 "start_time": start_time,
                 "end_time": end_time,
-                "sort": sort,
             }
         )
         return self._client.request(
@@ -516,24 +536,23 @@ class AccountV1Client:
         symbol: Optional[str] = None,
         limit: Optional[int] = None,
         from_id: Optional[int] = None,
-        cursor: Optional[int] = None,
+        cursor: Optional[str] = None,
         start_time: Optional[int] = None,
         end_time: Optional[int] = None,
         sort: Optional[str] = None,
     ) -> Any:
         _require_value("address", address)
         _validate_int_limit("limit", limit, 1, 500)
-        _validate_sort(sort)
+        _reject_removed_params(from_id=from_id, sort=sort)
         _validate_start_end(start_time, end_time)
+        _validate_cursor(cursor)
         params = _clean_params(
             {
                 "symbol": symbol,
                 "limit": limit,
-                "from_id": from_id,
                 "cursor": cursor,
                 "start_time": start_time,
                 "end_time": end_time,
-                "sort": sort,
             }
         )
         return self._client.request(
@@ -602,18 +621,20 @@ class AccountV1Client:
         start_time: Optional[int] = None,
         end_time: Optional[int] = None,
         from_id: Optional[int] = None,
-        cursor: Optional[int] = None,
+        cursor: Optional[str] = None,
         change_type: Optional[str] = None,
     ) -> Any:
         _require_value("address", address)
         _validate_int_limit("limit", limit, 1, 500)
         _validate_start_end(start_time, end_time)
+        _reject_removed_params(from_id=from_id)
+        _validate_cursor(cursor)
         params = _clean_params(
             {
                 "limit": limit,
                 "start_time": start_time,
                 "end_time": end_time,
-                "cursor": cursor if cursor is not None else from_id,
+                "cursor": cursor,
                 "change_type": change_type,
             }
         )
@@ -621,6 +642,37 @@ class AccountV1Client:
             "GET",
             f"/v1/account/subaccounts/{address}/balance-events",
             params=params,
+        )
+
+    def subaccount_bad_debts(self, *, address: str) -> Any:
+        _require_value("address", address)
+        return self._client.request(
+            "GET", f"/v1/account/subaccounts/{address}/bad-debts",
+        )
+
+    def subaccount_bankruptcy_records(
+        self,
+        *,
+        address: str,
+        limit: Optional[int] = None,
+        cursor: Optional[str] = None,
+        start_time: Optional[int] = None,
+        end_time: Optional[int] = None,
+    ) -> Any:
+        _require_value("address", address)
+        _validate_int_limit("limit", limit, 1, 500)
+        _validate_cursor(cursor)
+        _validate_start_end(start_time, end_time)
+        params = _clean_params(
+            {
+                "limit": limit,
+                "cursor": cursor,
+                "start_time": start_time,
+                "end_time": end_time,
+            }
+        )
+        return self._client.request(
+            "GET", f"/v1/account/subaccounts/{address}/bankruptcy-records", params=params,
         )
 
     def subaccount_liquidations(
@@ -638,6 +690,7 @@ class AccountV1Client:
         _require_value("address", address)
         _validate_int_limit("limit", limit, 1, 500)
         _validate_start_end(start_time, end_time)
+        _validate_cursor(cursor)
         params = _clean_params(
             {
                 "limit": limit,
@@ -645,7 +698,7 @@ class AccountV1Client:
                 "start_time": start_time,
                 "end_time": end_time,
                 "liquidator": liquidator,
-                "liquidation_type": liquidation_type,
+                "liq_type": liquidation_type,
                 "symbol": symbol,
             }
         )
@@ -845,14 +898,15 @@ class SpotV1Client:
         symbol: str,
         limit: Optional[int] = None,
         from_id: Optional[int] = None,
-        cursor: Optional[int] = None,
+        cursor: Optional[str] = None,
     ) -> Any:
         _require_value("symbol", symbol)
         _validate_int_limit("limit", limit, 1, 500)
+        _reject_removed_params(from_id=from_id)
+        _validate_cursor(cursor)
         params = _clean_params(
             {
                 "limit": limit,
-                "from_id": from_id,
                 "cursor": cursor,
             }
         )
@@ -879,6 +933,13 @@ class SpotV1Client:
 @dataclass
 class PerpV1Client:
     _client: ApiClient
+
+    def prices(self, *, symbol: Optional[str] = None) -> Any:
+        """Return index and mark prices for all perpetual markets or one symbol."""
+        if symbol is None:
+            return self._client.request("GET", "/v1/perp/prices")
+        _require_value("symbol", symbol)
+        return self._client.request("GET", f"/v1/perp/markets/{symbol}/prices")
 
     def markets(self) -> Any:
         return self._client.request("GET", "/v1/perp/markets")
@@ -918,14 +979,15 @@ class PerpV1Client:
         symbol: str,
         limit: Optional[int] = None,
         from_id: Optional[int] = None,
-        cursor: Optional[int] = None,
+        cursor: Optional[str] = None,
     ) -> Any:
         _require_value("symbol", symbol)
         _validate_int_limit("limit", limit, 1, 500)
+        _reject_removed_params(from_id=from_id)
+        _validate_cursor(cursor)
         params = _clean_params(
             {
                 "limit": limit,
-                "from_id": from_id,
                 "cursor": cursor,
             }
         )
@@ -965,7 +1027,7 @@ class PerpV1Client:
         _require_value("symbol", symbol)
         _require_value("interval", interval)
         _validate_oi_limit(limit)
-        _validate_sort(sort)
+        _reject_removed_params(sort=sort)
         _validate_start_end(start_time, end_time)
         params = _clean_params(
             {
@@ -973,7 +1035,6 @@ class PerpV1Client:
                 "limit": limit,
                 "start_time": start_time,
                 "end_time": end_time,
-                "sort": sort,
             }
         )
         return self._client.request(
@@ -1077,20 +1138,17 @@ class LendingV1Client:
         sort: Optional[str] = None,
     ) -> Any:
         _require_value("asset", asset)
-        if interval is None and time_frame is None:
+        _reject_removed_params(time_frame=time_frame, market_id=market_id, sort=sort)
+        if interval is None:
             interval = "1m"
-        _validate_int_limit("limit", limit, 1, 5000)
-        _validate_sort(sort)
+        _validate_int_limit("limit", limit, 1, 500)
         _validate_start_end(start_time, end_time)
         params = _clean_params(
             {
                 "interval": interval,
-                "time_frame": time_frame,
-                "market_id": market_id,
                 "limit": limit,
                 "start_time": start_time,
                 "end_time": end_time,
-                "sort": sort,
             }
         )
         return self._client.request(
@@ -1103,6 +1161,13 @@ class LendingV1Client:
 @dataclass
 class ChainTxV1Client:
     _client: ApiClient
+
+    def status(self, *, tx_hash: str) -> Any:
+        """Query the outcome of an existing REST submission without resubmitting."""
+        _require_value("tx_hash", tx_hash)
+        return self._client.request(
+            "GET", "/v1/chain/tx/status", params={"txHash": tx_hash},
+        )
 
     def __getattribute__(self, name: str):
         attr = object.__getattribute__(self, name)

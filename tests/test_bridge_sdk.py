@@ -1139,12 +1139,16 @@ def test_bridge_latest_block(monkeypatch) -> None:
 
 
 def test_bridge_api_net_resolution() -> None:
-    default = bridge_mod.BridgeApi()
+    with pytest.raises(ValueError, match="verified contract_address"):
+        bridge_mod.BridgeApi()
     expected = network_config(DEFAULT_NET)
+    assert expected.chain_id == 4856
+    assert expected.bridge_contract == ""
+    default = bridge_mod.BridgeApi(contract_address="0x" + "11" * 20)
     assert default.net == DEFAULT_NET
     assert default.rpc_url == expected.evm_rpc_url
     assert default.chain_id == expected.chain_id
-    assert default.contract_address == expected.bridge_contract
+    assert default.contract_address == "0x" + "11" * 20
 
     # mainnet is registered but not deployed yet: construction raises a clear error.
     with pytest.raises(ValueError, match="not deployed yet"):

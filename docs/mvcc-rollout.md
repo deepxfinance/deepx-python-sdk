@@ -1,16 +1,16 @@
 # MVCC SDK testing and rollout
 
-Status: opt-in release candidate, October 8, 2026. This is not a production cutover.
+Status: source candidate `0.2.7rc3`, October 14, 2026. Public testnet has moved
+to MVCC; funded-trading acceptance is still pending.
 
 ## Branch and version policy
 
 - Development began on `feat/mvcc-compat`, based on stable SDK commit `19f4c0f`.
-- `dev` and `main` include the opt-in compatibility changes at package version
-  `0.2.7rc2`. This merge does not mean the MVCC chain/backend rollout has passed
-  acceptance or changed the default endpoints. Existing `v0.2.6` remains immutable.
-- `v0.2.7rc1` remains immutable. `v0.2.7rc2` includes the synchronous receipt
-  fixes below; subsequent fixes should use `rc3`, etc. Pin exact candidate tags
-  for bot tests.
+- `devnet` is the internal-validation branch; changes merge into `main` for the
+  public testnet. Current source targets `0.2.7rc3`. This does not imply funded
+  trading or sustained-availability acceptance has passed.
+- Published `v0.2.6`, `v0.2.7rc1`, and `v0.2.7rc2` remain immutable. The `rc3`
+  source has not been published as a release. Pin exact published tags for bots.
 - Once chain deployment and the acceptance checks below are confirmed, set version
   `0.2.7` and publish `v0.2.7`. Recheck the available version before tagging if
   another release has occurred meanwhile.
@@ -20,8 +20,10 @@ Compatibility is selected from metadata, not runtime-version thresholds or hostn
 
 ## Explicit staging configuration
 
-These are isolated test deployments, not automatic failover endpoints for the
-existing public testnet. Verified via read-only RPC on September 30, 2026:
+The following deployment identities were verified via read-only RPC on
+September 30, 2026. This is a historical snapshot; see the October 14 adaptation
+below for the current public-testnet identity. These deployments must not be
+used as automatic failover endpoints for one another.
 
 | Deployment | HTTP RPC | Runtime | EVM chain ID | Event storage |
 | --- | --- | --- | --- | --- |
@@ -30,7 +32,7 @@ existing public testnet. Verified via read-only RPC on September 30, 2026:
 | Existing public testnet | `https://rpc-testnet.deepx.fi` | 371 | 4846 | `System.EventsMap` |
 
 Always recheck `eth_chainId` and `chain_getBlockHash(0)` before a cutover. The three
-deployments currently have different genesis hashes. Do not combine them in one
+deployments had different genesis hashes in the September 30 snapshot. Do not combine them in one
 endpoint pool, reuse signed transactions across them, or retain pending trackers
 while changing the client's chain.
 
@@ -55,11 +57,11 @@ client = AsyncChainClient(
 )
 ```
 
-Do not use the existing testnet REST/indexer or business WS endpoint with MVCC
-transactions. No MVCC REST or business WS address has been confirmed for this
-rollout. `ApiClient` transaction integration must wait for a matching backend.
-Use explicit market IDs/pairs from the staging chain rather than resolving them
-through the default public-testnet API.
+During the September 30 staging rollout, no matching MVCC REST or business WS
+endpoint had been confirmed. The October 14 public-testnet REST checks are
+recorded below; transaction integration and business WS acceptance still require
+verification. For isolated staging chains, use explicit market IDs/pairs from
+the selected chain rather than resolving them through the public-testnet API.
 
 ## Compatibility changes
 
@@ -223,3 +225,39 @@ recovery, or 24-hour availability validation described above.
 - Recheck reports remain local under `scratch/release-0.2.7rc2/`.
   This validation does not remove the funded-order, integration, recovery, or
   sustained-availability limitations above; `v0.2.7rc2` remains a prerelease.
+
+
+## October 14, 2026 public-testnet adaptation
+
+The public RPC aliases now return chain ID **4856**, runtime **376**, and genesis
+`0x87b3c18538a2c969775ffbd81beb3d6d8c9cdb22ffd259915230e61124b0fdd7`.
+The September 30 table above is historical; its old public-testnet identity no
+longer describes these aliases. Recreate clients and reconcile old-chain pending
+transactions separately. The old default bridge address has no code on the new
+chain; the SDK requires an explicit verified bridge contract.
+
+REST source methods now expose protocol statistics, asset and perpetual prices,
+bad debts, bankruptcy records, and REST transaction-status lookup. Removed query
+parameters fail before HTTP submission. Supported cursors are strings copied
+from `nextCursor`; clearing a removed filter silently is not permitted. The
+liquidation-type filter uses `liqType`. Current backend order history rejects
+`status`, so the SDK does not add that filter yet.
+
+Internal deployments continue to use explicit endpoint overrides on `devnet`.
+The public network registry does not add an internal network option.
+
+
+Validation for this source candidate:
+
+- Python 3.14 regression: **690 passed, 1 skipped**, with the pre-existing
+  temporary-file cleanup warning. Overall coverage is **95.26%**, compared with
+  **95.25%** on the unchanged baseline; the repository's **99%** coverage gate
+  still fails. API module coverage is **99.47%**. The threshold is unchanged.
+- Python 3.12 installed-wheel checks: **237 passed**, with the same warning.
+- Read-only queries passed on both devnet and testnet for statistics, asset and
+  perpetual prices, two cursor-paginated trade pages, and asynchronous statistics.
+  Public-testnet bad-debt and bankruptcy-record queries also passed. No
+  transaction was submitted.
+- Wheel and source distribution passed `twine check`; archive inspection
+  confirmed the expected source, version, and regression tests and excluded
+  local scratch data. Reports remain under `scratch/sdk-testnet-adaptation/`.

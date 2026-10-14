@@ -9,9 +9,10 @@ Clients:
 - `ApiClient` — REST client for market data and the operations the chain clients don't cover.
 - `SDK` as a thin wrapper holding both clients.
 
-MVCC compatibility is available as an opt-in `0.2.7rc2` prerelease. It is not a
-production cutover. Default public-testnet endpoints remain unchanged. See the
-[MVCC testing and rollout guide](docs/mvcc-rollout.md) before using staging nodes.
+The public testnet now uses the MVCC runtime (chain ID 4856). Current source
+version `0.2.7rc3` includes MVCC compatibility and the updated REST queries.
+Funded trading and sustained-availability acceptance remain pending; see the
+[MVCC testing and rollout guide](docs/mvcc-rollout.md).
 
 ## Install
 
@@ -22,6 +23,11 @@ git clone https://github.com/deepxfinance/deepx-python-sdk.git
 cd deepx-python-sdk
 pip install -e ".[dev]"
 ```
+
+Development changes land on the `devnet` Git branch for internal deployment
+validation, then merge into `main` for the public testnet. Public SDK network
+options remain `testnet` and `mainnet`; internal deployments use explicit
+`base_url`, `ws_base_url`, `substrate_ws`, and `evm_rpc_url` overrides.
 
 Alternatively, if you use [uv](https://github.com/astral-sh/uv), run the following to install all extras in a virtual environment:
 
@@ -450,7 +456,37 @@ spot_candles = api.v1.spot.candles(
 perp_market = api.v1.perp.market(symbol="ETH-USDC")
 funding = api.v1.perp.funding_rate(symbol="ETH-USDC")
 lending_status = api.v1.lending.market_status(asset="USDC")
+
+stats = api.v1.stats()
+asset_prices = api.v1.prices(asset="USDC")
+perp_prices = api.v1.perp.prices()  # all markets
+eth_prices = api.v1.perp.prices(symbol="ETH-USDC")
+bad_debts = api.v1.account.subaccount_bad_debts(address="0xYOUR_SUBACCOUNT")
+bankruptcies = api.v1.account.subaccount_bankruptcy_records(
+    address="0xYOUR_SUBACCOUNT", limit=20,
+)
 ```
+
+Statistics and price amounts are decimal strings denominated in USDC. Preserve
+these strings, or use `Decimal` for calculations. The statistics `time` is the
+common data cutoff in milliseconds, which can lag the chain. Its finality follows
+the backend's ingestor mode. Missing, incomplete, or stale snapshots raise the
+backend's 503 error; the SDK does not substitute zero values. Statistics accept
+no query parameters. `AsyncApiClient` uses the same methods with `await`.
+
+History endpoints that support pagination accept a **string** `cursor`: pass the
+previous response's `nextCursor` unchanged. Integer cursors and removed `from_id`
+parameters raise `ValueError`. Order/trade history, position history, and OI
+history reject `sort`; funding-payment history also rejects `cursor`. Borrowing
+status history uses `interval` and a maximum `limit` of 500; its removed
+`time_frame`, `market_id`, and `sort` arguments raise `ValueError`.
+
+`subaccount_liquidations(liquidation_type=...)` sends the backend's `liqType`
+filter. Current backend order-history endpoints do not accept `status` filters.
+To reconcile an existing REST transaction without resubmitting, use
+`api.v1.chain_tx.status(tx_hash=...)`. This reports the backend's outcome; an
+HTTP success or pending confirmation alone is not proof of order execution.
+
 
 `api.v1.ws.websocket_url()` returns the v1 WebSocket endpoint URL. For request payload construction, `deepx_sdk.ws_client` also exposes `v1_subscribe(...)`, `v1_unsubscribe(...)`, `v1_list(...)`, and `v1_post(...)`.
 
@@ -1012,11 +1048,14 @@ The EVM bridge (`MultiTokenBridge`, a Bool Network consumer) moves tokens betwee
 4. Bool Network's relayer delivers the message and the destination bridge releases/mints to the recipient — **no destination-side action needed**.
 
 ```python
+import os
 from deepx_sdk.bridge import BridgeApi
 
-# RPC endpoint, chain id, and bridge contract resolve from the network
-# registry — nothing to configure for the DeepX side.
-src = BridgeApi(private_key="0xYOUR_PRIVATE_KEY")
+# Configure the verified bridge pair for the current deployment.
+src = BridgeApi(
+    private_key="0xYOUR_PRIVATE_KEY",
+    contract_address=os.environ["BRIDGE_SRC"],
+)
 result = src.bridge_out_with_sign(
     dst_chain_id=11155111,                # Ethereum Sepolia
     amount=1_000_000,                     # 1 USDC (6 decimals)
@@ -1029,21 +1068,19 @@ print(result["tx_hash"])
 dst = BridgeApi(
     rpc_url="https://ethereum-sepolia-rpc.publicnode.com",
     chain_id=11155111,
-    contract_address="0x70e6adc5c6c2f131b32ce8347876e6c1af4f65e8",
+    contract_address=os.environ["BRIDGE_DST"],
 )
 event = dst.wait_bridge_in(recipient="0xRECIPIENT_ON_SEPOLIA",
                            from_block=dst.latest_block() - 20)
 print(event["amount"], event["tx_hash"])
 ```
 
-Current deployments (default network — the DeepX public testnet deployment):
-
-| Chain | Chain ID | Bridge |
-| ----- | -------- | ------ |
-| DeepX | 4846 | `0x874c408fd66117a2edb953fe68cadccd675e5c2c` |
-| Ethereum Sepolia | 11155111 | `0x70e6adc5c6c2f131b32ce8347876e6c1af4f65e8` |
-
-The `BridgeApi()` defaults resolve to this deployment. Internal/other deployments are used by passing explicit `rpc_url` / `chain_id` / `contract_address` (see `examples/bridge_evm.py`'s `BRIDGE_SRC_*` overrides).
+The public testnet chain ID is **4856**. The former bridge address is absent on
+this chain, so no default bridge contract is configured. `BridgeApi()` raises a
+clear error until you pass a verified `contract_address`. Confirm both bridges
+belong to the intended chain pair before using `BRIDGE_SRC` / `BRIDGE_DST` in the
+example. Explicit `rpc_url` / `chain_id` overrides remain available for other
+verified deployments.
 
 Token ids: `ETH=1, USDT=2, USDC=3, DAI=4, BNB=5, OKB=6` (`BRIDGE_TOKEN_MAP`). A token must be registered on **both** chains' bridges before it can be bridged; `get_token_info(token_id)` returns the per-chain registration.
 
