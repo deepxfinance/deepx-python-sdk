@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from . import _native_py
+from ._stp import compose_order_call
 from ._errors import DeepXSDKError, ValidationError
 
 try:
@@ -448,7 +449,8 @@ def _encode_pallet_call_sync(
     nonce: int,
 ) -> EncodedExtrinsic:
     started_ns = time.perf_counter_ns()
-    call = snapshot.substrate.compose_call(
+    call = compose_order_call(
+        snapshot.substrate,
         call_module=call_module,
         call_function=call_function,
         call_params=call_params,

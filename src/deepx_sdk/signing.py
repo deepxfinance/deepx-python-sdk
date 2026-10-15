@@ -69,7 +69,7 @@ def build_signed_perp_order(
     is_long: bool, size: int, price: int | None = None,
     order_type: str | int = "limit", slippage: int | None = None,
     take_profit: int | None = None, stop_loss: int | None = None,
-    reduce_only: bool = False, post_only: int = 0,
+    reduce_only: bool = False, post_only: int = 0, stp_mode: str | None = None,
     nonce_ms: int | None = None, timeout_ms: int | None = None,
 ) -> SignedExtrinsic:
     """Sign a perp order using chain integer units; do not submit it.
@@ -90,7 +90,7 @@ def build_signed_perp_order(
         subaccount=subaccount, market_id=market_id, is_long=is_long, size=size,
         price=price, order_type={"limit": 0, "market": 1, "stop": 2, "ioc": 3}[kind],
         slippage=slippage, take_profit=take_profit, stop_loss=stop_loss,
-        reduce_only=reduce_only, post_only=post_only, cloid=None,
+        reduce_only=reduce_only, post_only=post_only, cloid=None, stp_mode=stp_mode,
     )
     return _build_signed(
         substrate_ws=substrate_ws, private_key=private_key, call_module="PerpMarket",
@@ -103,7 +103,7 @@ def build_signed_spot_order(
     *, substrate_ws: str, private_key: str, subaccount: str, pair: str,
     side: str | bool, quote_amount: int, base_amount: int,
     order_type: str | int = "limit", slippage: int | None = None,
-    reduce_only: bool = False, post_only: int = 0,
+    reduce_only: bool = False, post_only: int = 0, stp_mode: str | None = None,
     nonce_ms: int | None = None, timeout_ms: int | None = None,
 ) -> SignedExtrinsic:
     """Sign a spot order using base/quote token base units; do not submit it."""
@@ -116,7 +116,7 @@ def build_signed_spot_order(
         order_type=_spot_order_type_param(
             {"limit": 0, "market": 1, "stop": 2, "ioc": 3}[kind], slippage,
         ),
-        post_only=_post_only_param(post_only), reduce_only=reduce_only, cloid=None,
+        post_only=_post_only_param(post_only), reduce_only=reduce_only, cloid=None, stp_mode=stp_mode,
     )
     return _build_signed(
         substrate_ws=substrate_ws, private_key=private_key, call_module="SpotMarket",

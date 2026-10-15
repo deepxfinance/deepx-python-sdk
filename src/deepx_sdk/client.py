@@ -107,6 +107,9 @@ from ._rpc_transport import (
     use_substrate_ws_config,
 )
 from ._tx_config import merge_tx_config_kwargs
+from ._trade_group import (
+    submit_trade_group_call, trade_group, trade_group_for, trade_group_invitations,
+)
 from ._types import (
     ActiveOrderInfo,
     CancelOrderResult,
@@ -130,6 +133,8 @@ from ._types import (
     LendingMarketState,
     ModifyOrderResult,
     TotalCollateralAndMarginInfo,
+    TradeGroupInfo,
+    TradeGroupInvitation,
     TxResult,
 )
 
@@ -553,6 +558,7 @@ class PerpMarketClient(_EvmTransportClientMixin):
         reduce_only: bool = False,
         post_only: int = 0,
         cloid: Optional[int] = None,
+        stp_mode: str | None = None,
         nonce_ms: Optional[int] = None,
     ) -> "SyncTransactionTicket[PlaceOrderResult]":
         resolved_market_id = self._client._resolve_perp_market_id(
@@ -573,6 +579,7 @@ class PerpMarketClient(_EvmTransportClientMixin):
                 reduce_only=reduce_only,
                 post_only=post_only,
                 cloid=cloid,
+                stp_mode=stp_mode,
                 nonce_ms=nonce_ms,
             )
         )
@@ -615,6 +622,7 @@ class PerpMarketClient(_EvmTransportClientMixin):
         reduce_only: bool = False,
         post_only: int = 0,
         cloid: Optional[int] = None,
+        stp_mode: str | None = None,
         precompile_address: Optional[str] = None,
         subaccount: Optional[str] = None,
         chain_id: Optional[int] = None,
@@ -642,6 +650,7 @@ class PerpMarketClient(_EvmTransportClientMixin):
                 reduce_only=reduce_only,
                 post_only=post_only,
                 cloid=cloid,
+                stp_mode=stp_mode,
                 precompile_address=precompile_address,
                 subaccount=subaccount,
                 chain_id=chain_id,
@@ -668,6 +677,7 @@ class PerpMarketClient(_EvmTransportClientMixin):
                     reduce_only=reduce_only,
                     post_only=post_only,
                     cloid=cloid,
+                    stp_mode=stp_mode,
                     precompile_address=precompile_address,
                     subaccount=subaccount,
                     chain_id=chain_id,
@@ -687,6 +697,7 @@ class PerpMarketClient(_EvmTransportClientMixin):
                 slippage=slippage,
                 reduce_only=reduce_only,
                 cloid=cloid,
+                stp_mode=stp_mode,
                 precompile_address=precompile_address,
                 subaccount=subaccount,
                 chain_id=chain_id,
@@ -709,6 +720,7 @@ class PerpMarketClient(_EvmTransportClientMixin):
                 price=price,
                 reduce_only=reduce_only,
                 cloid=cloid,
+                stp_mode=stp_mode,
                 precompile_address=precompile_address,
                 subaccount=subaccount,
                 chain_id=chain_id,
@@ -734,6 +746,7 @@ class PerpMarketClient(_EvmTransportClientMixin):
             reduce_only=reduce_only,
             post_only=post_only,
             cloid=cloid,
+            stp_mode=stp_mode,
             precompile_address=precompile_address,
             subaccount=subaccount,
             chain_id=chain_id,
@@ -759,6 +772,7 @@ class PerpMarketClient(_EvmTransportClientMixin):
         reduce_only: bool = False,
         post_only: int = 0,
         cloid: Optional[int] = None,
+        stp_mode: str | None = None,
         precompile_address: Optional[str] = None,
         subaccount: Optional[str] = None,
         chain_id: Optional[int] = None,
@@ -789,6 +803,7 @@ class PerpMarketClient(_EvmTransportClientMixin):
             reduce_only=reduce_only,
             post_only=post_only,
             cloid=cloid,
+            stp_mode=stp_mode,
             **self._client._tx_kwargs(
                 chain_id=chain_id,
                 gas_limit=gas_limit,
@@ -812,6 +827,7 @@ class PerpMarketClient(_EvmTransportClientMixin):
         price: int,
         reduce_only: bool = False,
         cloid: Optional[int] = None,
+        stp_mode: str | None = None,
         precompile_address: Optional[str] = None,
         subaccount: Optional[str] = None,
         chain_id: Optional[int] = None,
@@ -839,6 +855,7 @@ class PerpMarketClient(_EvmTransportClientMixin):
             price=price,
             reduce_only=reduce_only,
             cloid=cloid,
+            stp_mode=stp_mode,
             **self._client._tx_kwargs(
                 chain_id=chain_id,
                 gas_limit=gas_limit,
@@ -862,6 +879,7 @@ class PerpMarketClient(_EvmTransportClientMixin):
         slippage: Optional[int] = None,
         reduce_only: bool = False,
         cloid: Optional[int] = None,
+        stp_mode: str | None = None,
         precompile_address: Optional[str] = None,
         subaccount: Optional[str] = None,
         chain_id: Optional[int] = None,
@@ -889,6 +907,7 @@ class PerpMarketClient(_EvmTransportClientMixin):
             slippage=slippage,
             reduce_only=reduce_only,
             cloid=cloid,
+            stp_mode=stp_mode,
             **self._client._tx_kwargs(
                 chain_id=chain_id,
                 gas_limit=gas_limit,
@@ -913,6 +932,7 @@ class PerpMarketClient(_EvmTransportClientMixin):
         order_type: int,
         slippage: Optional[int] = None,
         cloid: Optional[int] = None,
+        stp_mode: str | None = None,
         take_profit: Optional[int] = None,
         stop_loss: Optional[int] = None,
         reduce_only: bool = False,
@@ -945,6 +965,7 @@ class PerpMarketClient(_EvmTransportClientMixin):
             order_type=order_type,
             slippage=slippage,
             cloid=cloid,
+            stp_mode=stp_mode,
             take_profit=take_profit,
             stop_loss=stop_loss,
             reduce_only=reduce_only,
@@ -1071,6 +1092,7 @@ class PerpMarketClient(_EvmTransportClientMixin):
         reduce_only: bool = False,
         post_only: int = 0,
         cloid: Optional[int] = None,
+        stp_mode: str | None = None,
         fast_cancel: bool = False,
         precompile_address: Optional[str] = None,
         subaccount: Optional[str] = None,
@@ -1113,6 +1135,7 @@ class PerpMarketClient(_EvmTransportClientMixin):
             reduce_only=reduce_only,
             post_only=post_only,
             cloid=cloid,
+            stp_mode=stp_mode,
             fast_cancel=fast_cancel,
             **self._client._tx_kwargs(
                 chain_id=chain_id,
@@ -1639,6 +1662,7 @@ class SpotMarketClient(_EvmTransportClientMixin):
         post_only: int = 0,
         reduce_only: bool = False,
         cloid: Optional[int] = None,
+        stp_mode: str | None = None,
         nonce_ms: Optional[int] = None,
     ) -> "SyncTransactionTicket[SpotPlaceOrderResult]":
         resolved_pair = self._client._resolve_spot_pair(pair=pair, symbol=symbol)
@@ -1654,6 +1678,7 @@ class SpotMarketClient(_EvmTransportClientMixin):
                 post_only=post_only,
                 reduce_only=reduce_only,
                 cloid=cloid,
+                stp_mode=stp_mode,
                 nonce_ms=nonce_ms,
             )
         )
@@ -1694,6 +1719,7 @@ class SpotMarketClient(_EvmTransportClientMixin):
         reduce_only: bool = False,
         auto_cancel: bool = False,
         cloid: Optional[int] = None,
+        stp_mode: str | None = None,
         precompile_address: Optional[str] = None,
         subaccount: Optional[str] = None,
         chain_id: Optional[int] = None,
@@ -1722,6 +1748,7 @@ class SpotMarketClient(_EvmTransportClientMixin):
                 base_amount=base_amount,
                 reduce_only=reduce_only,
                 cloid=cloid,
+                stp_mode=stp_mode,
                 precompile_address=precompile_address,
                 subaccount=subaccount,
                 chain_id=chain_id,
@@ -1749,6 +1776,7 @@ class SpotMarketClient(_EvmTransportClientMixin):
                 slippage=slippage,
                 auto_cancel=auto_cancel,
                 cloid=cloid,
+                stp_mode=stp_mode,
                 precompile_address=precompile_address,
                 subaccount=subaccount,
                 chain_id=chain_id,
@@ -1780,6 +1808,7 @@ class SpotMarketClient(_EvmTransportClientMixin):
             "auto_cancel": auto_cancel,
             "reduce_only": reduce_only,
             "cloid": cloid,
+            "stp_mode": stp_mode,
             "precompile_address": precompile_address,
             "subaccount": subaccount,
             "chain_id": chain_id,
@@ -1850,6 +1879,7 @@ class SpotMarketClient(_EvmTransportClientMixin):
         post_only: int = 0,
         reduce_only: bool = False,
         cloid: Optional[int] = None,
+        stp_mode: str | None = None,
         fast_cancel: bool = False,
         precompile_address: Optional[str] = None,
         subaccount: Optional[str] = None,
@@ -1885,6 +1915,7 @@ class SpotMarketClient(_EvmTransportClientMixin):
             post_only=post_only,
             reduce_only=reduce_only,
             cloid=cloid,
+            stp_mode=stp_mode,
             fast_cancel=fast_cancel,
             **self._client._tx_kwargs(
                 chain_id=chain_id,
@@ -1911,6 +1942,7 @@ class SpotMarketClient(_EvmTransportClientMixin):
         slippage: Optional[int] = None,
         auto_cancel: bool = False,
         cloid: Optional[int] = None,
+        stp_mode: str | None = None,
         precompile_address: Optional[str] = None,
         subaccount: Optional[str] = None,
         chain_id: Optional[int] = None,
@@ -1937,6 +1969,7 @@ class SpotMarketClient(_EvmTransportClientMixin):
             slippage=slippage,
             auto_cancel=auto_cancel,
             cloid=cloid,
+            stp_mode=stp_mode,
             **self._client._tx_kwargs(
                 chain_id=chain_id,
                 gas_limit=gas_limit,
@@ -1962,6 +1995,7 @@ class SpotMarketClient(_EvmTransportClientMixin):
         slippage: Optional[int] = None,
         auto_cancel: bool = False,
         cloid: Optional[int] = None,
+        stp_mode: str | None = None,
         precompile_address: Optional[str] = None,
         subaccount: Optional[str] = None,
         chain_id: Optional[int] = None,
@@ -1988,6 +2022,7 @@ class SpotMarketClient(_EvmTransportClientMixin):
             slippage=slippage,
             auto_cancel=auto_cancel,
             cloid=cloid,
+            stp_mode=stp_mode,
             **self._client._tx_kwargs(
                 chain_id=chain_id,
                 gas_limit=gas_limit,
@@ -2010,6 +2045,7 @@ class SpotMarketClient(_EvmTransportClientMixin):
         base_amount: int,
         reduce_only: bool = False,
         cloid: Optional[int] = None,
+        stp_mode: str | None = None,
         precompile_address: Optional[str] = None,
         subaccount: Optional[str] = None,
         chain_id: Optional[int] = None,
@@ -2033,6 +2069,7 @@ class SpotMarketClient(_EvmTransportClientMixin):
             base_amount=base_amount,
             reduce_only=reduce_only,
             cloid=cloid,
+            stp_mode=stp_mode,
             **self._client._tx_kwargs(
                 chain_id=chain_id,
                 gas_limit=gas_limit,
@@ -2055,6 +2092,7 @@ class SpotMarketClient(_EvmTransportClientMixin):
         base_amount: int,
         reduce_only: bool = False,
         cloid: Optional[int] = None,
+        stp_mode: str | None = None,
         precompile_address: Optional[str] = None,
         subaccount: Optional[str] = None,
         chain_id: Optional[int] = None,
@@ -2078,6 +2116,7 @@ class SpotMarketClient(_EvmTransportClientMixin):
             base_amount=base_amount,
             reduce_only=reduce_only,
             cloid=cloid,
+            stp_mode=stp_mode,
             **self._client._tx_kwargs(
                 chain_id=chain_id,
                 gas_limit=gas_limit,
@@ -2101,6 +2140,7 @@ class SpotMarketClient(_EvmTransportClientMixin):
         auto_cancel: bool = False,
         reduce_only: bool = False,
         cloid: Optional[int] = None,
+        stp_mode: str | None = None,
         precompile_address: Optional[str] = None,
         subaccount: Optional[str] = None,
         chain_id: Optional[int] = None,
@@ -2125,6 +2165,7 @@ class SpotMarketClient(_EvmTransportClientMixin):
             auto_cancel=auto_cancel,
             reduce_only=reduce_only,
             cloid=cloid,
+            stp_mode=stp_mode,
             **self._client._tx_kwargs(
                 chain_id=chain_id,
                 gas_limit=gas_limit,
@@ -2149,6 +2190,7 @@ class SpotMarketClient(_EvmTransportClientMixin):
         auto_cancel: bool = False,
         reduce_only: bool = False,
         cloid: Optional[int] = None,
+        stp_mode: str | None = None,
         precompile_address: Optional[str] = None,
         subaccount: Optional[str] = None,
         chain_id: Optional[int] = None,
@@ -2174,6 +2216,7 @@ class SpotMarketClient(_EvmTransportClientMixin):
             auto_cancel=auto_cancel,
             reduce_only=reduce_only,
             cloid=cloid,
+            stp_mode=stp_mode,
             **self._client._tx_kwargs(
                 chain_id=chain_id,
                 gas_limit=gas_limit,
@@ -2197,6 +2240,7 @@ class SpotMarketClient(_EvmTransportClientMixin):
         auto_cancel: bool = False,
         reduce_only: bool = False,
         cloid: Optional[int] = None,
+        stp_mode: str | None = None,
         precompile_address: Optional[str] = None,
         subaccount: Optional[str] = None,
         chain_id: Optional[int] = None,
@@ -2221,6 +2265,7 @@ class SpotMarketClient(_EvmTransportClientMixin):
             auto_cancel=auto_cancel,
             reduce_only=reduce_only,
             cloid=cloid,
+            stp_mode=stp_mode,
             **self._client._tx_kwargs(
                 chain_id=chain_id,
                 gas_limit=gas_limit,
@@ -2245,6 +2290,7 @@ class SpotMarketClient(_EvmTransportClientMixin):
         auto_cancel: bool = False,
         reduce_only: bool = False,
         cloid: Optional[int] = None,
+        stp_mode: str | None = None,
         precompile_address: Optional[str] = None,
         subaccount: Optional[str] = None,
         chain_id: Optional[int] = None,
@@ -2270,6 +2316,7 @@ class SpotMarketClient(_EvmTransportClientMixin):
             auto_cancel=auto_cancel,
             reduce_only=reduce_only,
             cloid=cloid,
+            stp_mode=stp_mode,
             **self._client._tx_kwargs(
                 chain_id=chain_id,
                 gas_limit=gas_limit,
@@ -2406,6 +2453,195 @@ class SubaccountClient(_EvmTransportClientMixin):
 
     def _precompile_address(self, override: Optional[str]) -> str:
         return self._client._resolve_subaccount_precompile(override)
+
+    def create_trade_group(
+        self, *,
+        nonce: int | None = None,
+        wait_for_finalized: bool | None = None,
+        timeout_ms: int | None = None,
+    ) -> TxResult:
+        return submit_trade_group_call(
+            substrate_ws=self._client.substrate_ws,
+            evm_rpc_url=self._client.evm_rpc_url,
+            private_key=self._client.private_key,
+            call_function="create_trade_group",
+            nonce=nonce,
+            wait_for_finalized=(
+                self._client.wait_for_finalized if wait_for_finalized is None else wait_for_finalized
+            ),
+            timeout_ms=timeout_ms,
+        )
+
+    def invite_trade_group(
+        self, *,
+        group_id: int,
+        account: str,
+        nonce: int | None = None,
+        wait_for_finalized: bool | None = None,
+        timeout_ms: int | None = None,
+    ) -> TxResult:
+        return submit_trade_group_call(
+            substrate_ws=self._client.substrate_ws,
+            evm_rpc_url=self._client.evm_rpc_url,
+            private_key=self._client.private_key,
+            call_function="invite_trade_group",
+            group_id=group_id,
+            account=account,
+            nonce=nonce,
+            wait_for_finalized=(
+                self._client.wait_for_finalized if wait_for_finalized is None else wait_for_finalized
+            ),
+            timeout_ms=timeout_ms,
+        )
+
+    def accept_trade_group(
+        self, *,
+        group_id: int,
+        nonce: int | None = None,
+        wait_for_finalized: bool | None = None,
+        timeout_ms: int | None = None,
+    ) -> TxResult:
+        return submit_trade_group_call(
+            substrate_ws=self._client.substrate_ws,
+            evm_rpc_url=self._client.evm_rpc_url,
+            private_key=self._client.private_key,
+            call_function="accept_trade_group",
+            group_id=group_id,
+            nonce=nonce,
+            wait_for_finalized=(
+                self._client.wait_for_finalized if wait_for_finalized is None else wait_for_finalized
+            ),
+            timeout_ms=timeout_ms,
+        )
+
+    def reject_trade_group(
+        self, *,
+        group_id: int,
+        nonce: int | None = None,
+        wait_for_finalized: bool | None = None,
+        timeout_ms: int | None = None,
+    ) -> TxResult:
+        return submit_trade_group_call(
+            substrate_ws=self._client.substrate_ws,
+            evm_rpc_url=self._client.evm_rpc_url,
+            private_key=self._client.private_key,
+            call_function="reject_trade_group",
+            group_id=group_id,
+            nonce=nonce,
+            wait_for_finalized=(
+                self._client.wait_for_finalized if wait_for_finalized is None else wait_for_finalized
+            ),
+            timeout_ms=timeout_ms,
+        )
+
+    def revoke_trade_group_invitation(
+        self, *,
+        group_id: int,
+        account: str,
+        nonce: int | None = None,
+        wait_for_finalized: bool | None = None,
+        timeout_ms: int | None = None,
+    ) -> TxResult:
+        return submit_trade_group_call(
+            substrate_ws=self._client.substrate_ws,
+            evm_rpc_url=self._client.evm_rpc_url,
+            private_key=self._client.private_key,
+            call_function="revoke_trade_group_invitation",
+            group_id=group_id,
+            account=account,
+            nonce=nonce,
+            wait_for_finalized=(
+                self._client.wait_for_finalized if wait_for_finalized is None else wait_for_finalized
+            ),
+            timeout_ms=timeout_ms,
+        )
+
+    def leave_trade_group(
+        self, *,
+        nonce: int | None = None,
+        wait_for_finalized: bool | None = None,
+        timeout_ms: int | None = None,
+    ) -> TxResult:
+        return submit_trade_group_call(
+            substrate_ws=self._client.substrate_ws,
+            evm_rpc_url=self._client.evm_rpc_url,
+            private_key=self._client.private_key,
+            call_function="leave_trade_group",
+            nonce=nonce,
+            wait_for_finalized=(
+                self._client.wait_for_finalized if wait_for_finalized is None else wait_for_finalized
+            ),
+            timeout_ms=timeout_ms,
+        )
+
+    def remove_trade_group_member(
+        self, *,
+        group_id: int,
+        account: str,
+        nonce: int | None = None,
+        wait_for_finalized: bool | None = None,
+        timeout_ms: int | None = None,
+    ) -> TxResult:
+        return submit_trade_group_call(
+            substrate_ws=self._client.substrate_ws,
+            evm_rpc_url=self._client.evm_rpc_url,
+            private_key=self._client.private_key,
+            call_function="remove_trade_group_member",
+            group_id=group_id,
+            account=account,
+            nonce=nonce,
+            wait_for_finalized=(
+                self._client.wait_for_finalized if wait_for_finalized is None else wait_for_finalized
+            ),
+            timeout_ms=timeout_ms,
+        )
+
+    def dissolve_trade_group(
+        self, *,
+        group_id: int,
+        nonce: int | None = None,
+        wait_for_finalized: bool | None = None,
+        timeout_ms: int | None = None,
+    ) -> TxResult:
+        return submit_trade_group_call(
+            substrate_ws=self._client.substrate_ws,
+            evm_rpc_url=self._client.evm_rpc_url,
+            private_key=self._client.private_key,
+            call_function="dissolve_trade_group",
+            group_id=group_id,
+            nonce=nonce,
+            wait_for_finalized=(
+                self._client.wait_for_finalized if wait_for_finalized is None else wait_for_finalized
+            ),
+            timeout_ms=timeout_ms,
+        )
+
+    def trade_group_for(
+        self, *, account: str, precompile_address: str | None = None,
+    ) -> int:
+        return trade_group_for(
+            evm_rpc_url=self._client.evm_rpc_url,
+            precompile_address=self._precompile_address(precompile_address),
+            account=account,
+        )
+
+    def trade_group(
+        self, *, group_id: int, precompile_address: str | None = None,
+    ) -> TradeGroupInfo:
+        return trade_group(
+            evm_rpc_url=self._client.evm_rpc_url,
+            precompile_address=self._precompile_address(precompile_address),
+            group_id=group_id,
+        )
+
+    def trade_group_invitations(
+        self, *, group_id: int, precompile_address: str | None = None,
+    ) -> list[TradeGroupInvitation]:
+        return trade_group_invitations(
+            evm_rpc_url=self._client.evm_rpc_url,
+            precompile_address=self._precompile_address(precompile_address),
+            group_id=group_id,
+        )
 
     def initialize_subaccount(
         self,

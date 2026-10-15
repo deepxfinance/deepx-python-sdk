@@ -35,6 +35,8 @@ __all__ = [
     "SubaccountUserStats",
     "SystemAccountInfo",
     "TotalCollateralAndMarginInfo",
+    "TradeGroupInfo",
+    "TradeGroupInvitation",
     "TxConfig",
     "TxResult",
 ]
@@ -214,6 +216,7 @@ class PerpOrderInfo:
     size_remain: int
     take_profit: int
     stop_loss: int
+    stp_mode: str | None = None
 
 
 @dataclass
@@ -269,6 +272,7 @@ class SpotOrderInfo:
     is_buy: bool
     order_type: int
     slippage: int
+    stp_mode: str | None = None
 
 
 @dataclass
@@ -373,3 +377,15 @@ class LendingAssetPoolState:
     protocol_reserve: int
     supply_cap: int
     borrow_cap: int
+
+
+@dataclass
+class TradeGroupInfo:
+    creator: str
+    members: list[str]
+
+
+@dataclass
+class TradeGroupInvitation:
+    account: str
+    expires_at: int  # Unix milliseconds; expired invitations are omitted by the node

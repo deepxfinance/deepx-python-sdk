@@ -163,6 +163,7 @@ def test_perp_order_actions_use_pallet_calls(monkeypatch) -> None:
     assert captured["submit"]["call_function"] == "place_order"
     assert captured["submit"]["call_params"] == {
         "params": {
+            "stp_mode": None,
             "subaccount": "0x" + "22" * 20,
             "market_id": 3,
             "is_long": True,
@@ -207,6 +208,7 @@ def test_perp_order_actions_ioc_uses_pallet_calls(monkeypatch) -> None:
     assert captured["submit"]["call_function"] == "place_order"
     assert captured["submit"]["call_params"] == {
         "params": {
+            "stp_mode": None,
             "subaccount": "0x" + "22" * 20,
             "market_id": 3,
             "is_long": True,
@@ -309,6 +311,7 @@ def test_perp_order_action_variants_and_validation(monkeypatch) -> None:
     _perp_market.place_perp_order_market(**base, is_long=False, reduce_only=True)
     assert captured["submit"]["call_params"] == {
         "params": {
+            "stp_mode": None,
             "subaccount": "0x" + "22" * 20,
             "market_id": 3,
             "is_long": False,
@@ -532,6 +535,7 @@ def test_perp_modify_order_builds_cancel_place_ops(monkeypatch) -> None:
         {
             "Place": {
                 "Perp": {
+                    "stp_mode": None,
                     "subaccount": "0x" + "22" * 20,
                     "market_id": 3,
                     "is_long": True,
@@ -651,6 +655,7 @@ def test_spot_modify_order_builds_cancel_place_ops(monkeypatch) -> None:
         {
             "Place": {
                 "Spot": {
+                    "stp_mode": None,
                     "subaccount": "0x" + "22" * 20,
                     "pair": pair,
                     "is_buy": True,
@@ -842,6 +847,7 @@ def test_spot_order_actions_use_pallet_calls(monkeypatch) -> None:
     assert captured["submit"]["call_function"] == "place_order"
     assert captured["submit"]["call_params"] == {
         "params": {
+            "stp_mode": None,
             "subaccount": "0x" + "22" * 20,
             "pair": pair,
             "is_buy": True,
@@ -881,6 +887,7 @@ def test_spot_order_action_variants_and_validation(monkeypatch) -> None:
     assert captured["submit"]["event"] == "StateOrderSell"
     assert captured["submit"]["call_params"] == {
         "params": {
+            "stp_mode": None,
             "subaccount": "0x" + "22" * 20,
             "pair": pair,
             "is_buy": False,
@@ -952,6 +959,7 @@ def test_spot_order_actions_ioc_uses_pallet_calls(monkeypatch) -> None:
     assert captured["submit"]["call_function"] == "place_order"
     assert captured["submit"]["call_params"] == {
         "params": {
+            "stp_mode": None,
             "subaccount": "0x" + "22" * 20,
             "pair": pair,
             "is_buy": True,

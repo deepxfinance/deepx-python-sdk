@@ -29,6 +29,10 @@ validation, then merge into `main` for the public testnet. Public SDK network
 options remain `testnet` and `mainnet`; internal deployments use explicit
 `base_url`, `ws_base_url`, `substrate_ws`, and `evm_rpc_url` overrides.
 
+The `devnet` branch also includes per-order `stp_mode` and wallet trade-group
+management for STP-enabled runtimes. See the [STP guide](docs/stp.md) for modes,
+legacy-runtime behavior, and validation boundaries.
+
 Alternatively, if you use [uv](https://github.com/astral-sh/uv), run the following to install all extras in a virtual environment:
 
 ```

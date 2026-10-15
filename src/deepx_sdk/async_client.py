@@ -87,6 +87,7 @@ class AsyncPerpMarketClient:
         reduce_only: bool = False,
         post_only: int = 0,
         cloid: int | None = None,
+        stp_mode: str | None = None,
         nonce_ms: int | None = None,
     ) -> PendingTransaction[PlaceOrderResult]:
         order_type_id = {
@@ -109,6 +110,7 @@ class AsyncPerpMarketClient:
                 reduce_only=reduce_only,
                 post_only=post_only,
                 cloid=cloid,
+                stp_mode=stp_mode,
             )
         }
 
@@ -206,6 +208,7 @@ class AsyncSpotMarketClient:
         post_only: int = 0,
         reduce_only: bool = False,
         cloid: int | None = None,
+        stp_mode: str | None = None,
         nonce_ms: int | None = None,
     ) -> PendingTransaction[SpotPlaceOrderResult]:
         normalized_side = _normalize_spot_side(side)
@@ -228,6 +231,7 @@ class AsyncSpotMarketClient:
             ),
             reduce_only=reduce_only,
             cloid=cloid,
+            stp_mode=stp_mode,
         )
 
         def decode(
