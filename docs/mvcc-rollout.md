@@ -261,3 +261,60 @@ Validation for this source candidate:
 - Wheel and source distribution passed `twine check`; archive inspection
   confirmed the expected source, version, and regression tests and excluded
   local scratch data. Reports remain under `scratch/sdk-testnet-adaptation/`.
+
+## October 20, 2026 backend adaptation
+
+Compared with backend `0205fb14cf9b29866af95325aabcd292b294b6af`:
+
+| Backend branch | Reviewed commit | SDK impact |
+| --- | --- | --- |
+| devnet | `a0965bd092d537c2b355c88f09b2311104556eeb` | Four new read endpoints and the `perp@liquidations` channel |
+| testnet | `5c141cec7c9eed5a9728edd1f038016712a5aa37` | Statistics reconnect and runtime/event compatibility fixes; existing REST contracts unchanged |
+
+Devnet also updates ADL ranking and reversal accounting for runtime 222/379,
+refreshes recent candle tails, and improves projector, reconciliation and
+ingestor reliability. Those server-side changes retain existing client request
+and response structures. The public ADL snapshot score is a reference score,
+distinct from executor ranking keys.
+
+SDK `devnet` adds `v1.insurance_fund()`, `v1.insurance_fund_history()`,
+`v1.perp.liquidations()`, `v1.perp.adl_queue()`, and liquidation subscribe /
+unsubscribe helpers. Liquidation record IDs are kept in `data`, separate from
+request IDs. Methods retain decimal strings, opaque cursors, backend defaults,
+and HTTP errors. See the README for limits, intervals and stream recovery.
+
+These endpoints are absent from both testnet source and live OpenAPI. All four
+testnet REST probes returned 404; its WebSocket rejected the new channel with
+10015. SDK `main` therefore receives no new endpoint methods in this round.
+The source version remains the unpublished `0.2.7rc3`; no release is published.
+
+Read-only live checks on October 20:
+
+- Devnet insurance snapshot, history and market liquidation history returned
+  200 using SDK methods; the asynchronous insurance query also succeeded.
+- Devnet ADL returned 503 / 10012, preserved by the SDK. Statistics also returned
+  503 in one probe; testnet statistics returned 200. No snapshot fallback or
+  fabricated empty ranking is introduced.
+- Devnet liquidation subscribe and unsubscribe acknowledgements passed. The
+  initial connection returned 502; a bounded recheck succeeded. Actual new
+  liquidation delivery and disconnect recovery were not exercised.
+- Live chain metadata: devnet runtime **222**, chain **4855**, genesis
+  `0xce6a2adf967b506ec36b776ae27a11cd8cb2f358216e992b5be2904b20769880`;
+  testnet runtime **377**, chain **4856**, genesis
+  `0x87b3c18538a2c969775ffbd81beb3d6d8c9cdb22ffd259915230e61124b0fdd7`.
+  These versions supersede the October 14 observations above.
+
+STP remains completely removed by product decision. Both live runtimes still
+require `stp_mode` in spot and perpetual place-order structs. Composing ordinary
+orders using the current SDK parameters fails with `Element "stp_mode" of
+struct is missing in given value` on both networks. This includes signing paths
+that compose the order locally before REST submission. Wait for the node layout
+rollback; no default field, STP parameter or trade-group API is restored.
+No orders, transfers or other transactions were broadcast during validation.
+
+Validation: Python 3.14 regression **727 passed, 1 skipped**; Python 3.12
+installed-wheel checks **167 passed**. Wheel and source distribution passed
+`twine check`. Overall coverage is **95.28%**, so the existing **99%** gate still
+fails; the threshold and pre-existing temporary-file cleanup warning remain.
+
+Local review evidence remains under `scratch/backend-review-20261020/`.

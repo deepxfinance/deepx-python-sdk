@@ -254,6 +254,35 @@ class V1Client:
             "GET", "/v1/prices", params=_clean_params({"asset": asset}) or None,
         )
 
+    def insurance_fund(self) -> Any:
+        """Return the current insurance fund snapshot, preserving decimal strings."""
+        return self._client.request("GET", "/v1/insurance-fund")
+
+    def insurance_fund_history(
+        self,
+        *,
+        interval: Optional[str] = None,
+        limit: Optional[int] = None,
+        start_time: Optional[int] = None,
+        end_time: Optional[int] = None,
+    ) -> Any:
+        """Return chronological snapshots; backend defaults are 1d and one row."""
+        if interval is not None and interval not in {
+            "1h", "2h", "4h", "8h", "12h", "1d", "3d", "1w", "1M",
+        }:
+            raise ValueError("unsupported insurance fund history interval")
+        _validate_int_limit("limit", limit, 1, 500)
+        _validate_start_end(start_time, end_time)
+        if any(t is not None and t < 0 for t in (start_time, end_time)):
+            raise ValueError("start_time and end_time must be non-negative")
+        return self._client.request(
+            "GET", "/v1/insurance-fund/history",
+            params=_clean_params({
+                "interval": interval, "limit": limit,
+                "start_time": start_time, "end_time": end_time,
+            }),
+        )
+
 
 @dataclass
 class WsV1Client:
@@ -933,6 +962,39 @@ class SpotV1Client:
 @dataclass
 class PerpV1Client:
     _client: ApiClient
+
+    def liquidations(
+        self,
+        *,
+        symbol: str,
+        limit: Optional[int] = None,
+        cursor: Optional[str] = None,
+        start_time: Optional[int] = None,
+        end_time: Optional[int] = None,
+    ) -> Any:
+        """Return market-wide liquidations newest first, with an opaque cursor."""
+        _require_value("symbol", symbol)
+        _validate_int_limit("limit", limit, 1, 500)
+        _validate_cursor(cursor)
+        _validate_start_end(start_time, end_time)
+        if any(t is not None and t < 0 for t in (start_time, end_time)):
+            raise ValueError("start_time and end_time must be non-negative")
+        return self._client.request(
+            "GET", f"/v1/perp/markets/{symbol}/liquidations",
+            params=_clean_params({
+                "limit": limit, "cursor": cursor,
+                "start_time": start_time, "end_time": end_time,
+            }),
+        )
+
+    def adl_queue(self, *, symbol: str, limit: Optional[int] = None) -> Any:
+        """Return reference ADL rankings; limit applies separately to each side."""
+        _require_value("symbol", symbol)
+        _validate_int_limit("limit", limit, 1, 30)
+        return self._client.request(
+            "GET", f"/v1/perp/markets/{symbol}/adl-queue",
+            params=_clean_params({"limit": limit}),
+        )
 
     def prices(self, *, symbol: Optional[str] = None) -> Any:
         """Return index and mark prices for all perpetual markets or one symbol."""

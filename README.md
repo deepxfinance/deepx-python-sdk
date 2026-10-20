@@ -490,6 +490,47 @@ HTTP success or pending confirmation alone is not proof of order execution.
 
 `api.v1.ws.websocket_url()` returns the v1 WebSocket endpoint URL. For request payload construction, `deepx_sdk.ws_client` also exposes `v1_subscribe(...)`, `v1_unsubscribe(...)`, `v1_list(...)`, and `v1_post(...)`.
 
+### Public liquidation and insurance queries (devnet branch)
+
+As of October 20, 2026, these endpoints are available on the internal devnet
+backend. Public testnet does not expose them yet. Use an explicit backend URL:
+
+```python
+api = dx.ApiClient(base_url="https://rest-api-devnet.deepx.fi")
+insurance = api.v1.insurance_fund()
+insurance_history = api.v1.insurance_fund_history(interval="1d", limit=30)
+liquidations = api.v1.perp.liquidations(symbol="ETH-USDC", limit=100)
+adl = api.v1.perp.adl_queue(symbol="ETH-USDC", limit=10)
+```
+
+These methods also work with `AsyncApiClient`. Amounts and ADL scores retain
+their decimal strings. Liquidation records include `blockNumber`; pass
+`nextCursor` unchanged to fetch older records. The default liquidation and
+insurance-history limits are one record. Both histories accept `start_time`
+and `end_time` in milliseconds, and limits from 1 to 500. Insurance history is
+chronological and accepts `1h`, `2h`, `4h`, `8h`, `12h`, `1d` (default), `3d`,
+`1w`, and `1M` (UTC calendar month). Missing historical samples are not filled.
+
+ADL limits range from 1 to 30 **per side**, with a default of 10. Rankings
+refresh every 30 minutes and provide reference scores; they do not guarantee
+execution order. Missing or expired snapshots raise the backend's 503 error.
+
+`deepx_sdk.ws_client.v1_sub_perp_liquidations(id, symbol=...)` and
+`v1_unsub_perp_liquidations(...)` construct requests for `perp@liquidations`.
+Each push contains one liquidation record in `data`. The backend closes the
+connection when delivery has a gap. Recover overlapping history through
+`api.v1.perp.liquidations()` after reconnecting and subscribing, buffering new
+pushes during recovery and deduplicating by record `id`. Delivery is not
+guaranteed exactly once. The SDK exposes these operations
+without automatically reconnecting or recovering history.
+
+STP and trade-group SDK support remain deferred. On October 20, read-only
+metadata checks found that devnet runtime 222 and testnet runtime 377 still
+require `stp_mode` in order parameters. With that field removed from the SDK,
+ordinary spot and perpetual orders fail locally during encoding. Order
+submission must wait for the node to revert that layout; these read API
+additions do not resolve that incompatibility.
+
 ### Standalone order signing
 
 Use the public signing functions when your application owns REST/WS submission and transaction tracking. They do not require `ChainClient` or `ApiClient`:

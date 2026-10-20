@@ -172,7 +172,8 @@ def parse_ws_message(payload: Any) -> WsMessage:
         channel = data_params.get("channel")
 
     request_id = _present(payload, "id")
-    if request_id is None:
+    # Liquidation pushes contain a record id, not a request correlation id.
+    if request_id is None and channel != "perp@liquidations":
         request_id = _present(data_map, "id")
 
     result = _present(payload, "result")
@@ -245,6 +246,10 @@ def v1_sub_perp_trades(
     symbol: str,
 ) -> dict[str, Any]:
     return v1_subscribe(request_id, channel="perp@trades", symbol=symbol)
+
+
+def v1_sub_perp_liquidations(request_id: Any, *, symbol: str) -> dict[str, Any]:
+    return v1_subscribe(request_id, channel="perp@liquidations", symbol=symbol)
 
 
 def v1_sub_perp_ticker(
@@ -440,6 +445,10 @@ def v1_unsub_perp_orderbook(request_id: Any, *, symbol: str) -> dict[str, Any]:
 
 def v1_unsub_perp_trades(request_id: Any, *, symbol: str) -> dict[str, Any]:
     return v1_unsubscribe(request_id, channel="perp@trades", symbol=symbol)
+
+
+def v1_unsub_perp_liquidations(request_id: Any, *, symbol: str) -> dict[str, Any]:
+    return v1_unsubscribe(request_id, channel="perp@liquidations", symbol=symbol)
 
 
 def v1_unsub_perp_ticker(request_id: Any, *, symbol: str) -> dict[str, Any]:
