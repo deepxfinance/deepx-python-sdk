@@ -524,13 +524,6 @@ pushes during recovery and deduplicating by record `id`. Delivery is not
 guaranteed exactly once. The SDK exposes these operations
 without automatically reconnecting or recovering history.
 
-STP and trade-group SDK support remain deferred. On October 20, read-only
-metadata checks found that devnet runtime 222 and testnet runtime 377 still
-require `stp_mode` in order parameters. With that field removed from the SDK,
-ordinary spot and perpetual orders fail locally during encoding. Order
-submission must wait for the node to revert that layout; these read API
-additions do not resolve that incompatibility.
-
 ### Standalone order signing
 
 Use the public signing functions when your application owns REST/WS submission and transaction tracking. They do not require `ChainClient` or `ApiClient`:

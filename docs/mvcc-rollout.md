@@ -304,17 +304,22 @@ Read-only live checks on October 20:
   `0x87b3c18538a2c969775ffbd81beb3d6d8c9cdb22ffd259915230e61124b0fdd7`.
   These versions supersede the October 14 observations above.
 
-STP remains completely removed by product decision. Both live runtimes still
-require `stp_mode` in spot and perpetual place-order structs. Composing ordinary
-orders using the current SDK parameters fails with `Element "stp_mode" of
-struct is missing in given value` on both networks. This includes signing paths
-that compose the order locally before REST submission. Wait for the node layout
-rollback; no default field, STP parameter or trade-group API is restored.
+Both live runtimes require `stp_mode` in spot and perpetual place-order structs.
+The subsequent SDK compatibility fix explicitly encodes `Some(StpMode::None)`
+(`stp_mode="None"`, SCALE `0x0100`) on both networks, disabling STP. Outer
+`None` would instead select the chain default `ExpireMaker`. The fix covers
+synchronous and asynchronous orders, standalone and REST signing, and atomic
+cancel/replace orders. Public STP parameters and trade-group APIs remain absent.
+Read-only checks with both networks' metadata verified ordinary order encoding
+and the explicit STP bytes; no node rollback is needed for this field.
 No orders, transfers or other transactions were broadcast during validation.
 
 Validation: Python 3.14 regression **727 passed, 1 skipped**; Python 3.12
 installed-wheel checks **167 passed**. Wheel and source distribution passed
 `twine check`. Overall coverage is **95.28%**, so the existing **99%** gate still
 fails; the threshold and pre-existing temporary-file cleanup warning remain.
+
+After the explicit-STP-off fix, Python 3.14 regression: **731 passed, 1 skipped**.
+Coverage remains **95.28%**, below the existing 99% threshold.
 
 Local review evidence remains under `scratch/backend-review-20261020/`.
