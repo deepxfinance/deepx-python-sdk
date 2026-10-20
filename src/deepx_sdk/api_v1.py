@@ -10,7 +10,6 @@ from typing import Any, Optional
 from .api import ApiClient
 from ._rpc_transport import use_evm_rpc_config
 from ._tx_config import merge_tx_config_kwargs
-from ._stp import normalize_stp_mode
 from ._abi import (
     normalize_address,
     normalize_bytes32,
@@ -117,7 +116,6 @@ def _spot_place_params(
     post_only: str,
     reduce_only: bool,
     cloid: Optional[int],
-    stp_mode: str | None = None,
 ) -> dict[str, Any]:
     # On-chain `place_order` takes a single `params: SpotPlaceParams` arg.
     # `order_type` shares the perp OrderType enum: Limit(TimeInForce) |
@@ -135,7 +133,6 @@ def _spot_place_params(
             "order_type": order_type,
             "post_only": post_only,
             "reduce_only": bool(reduce_only),
-            "stp_mode": normalize_stp_mode(stp_mode),
         }
     }
 
@@ -1406,7 +1403,6 @@ class ChainTxV1Client:
         reduce_only: bool = False,
         post_only: int = 0,
         cloid: Optional[int] = None,
-        stp_mode: str | None = None,
         evm_rpc_url: Optional[str] = None,
         private_key: Optional[str] = None,
         precompile_address: Optional[str] = None,
@@ -1431,7 +1427,6 @@ class ChainTxV1Client:
             reduce_only=reduce_only,
             post_only=post_only,
             cloid=cloid,
-            stp_mode=stp_mode,
             evm_rpc_url=evm_rpc_url,
             private_key=private_key,
             precompile_address=precompile_address,
@@ -1453,7 +1448,6 @@ class ChainTxV1Client:
         slippage: Optional[int] = None,
         reduce_only: bool = False,
         cloid: Optional[int] = None,
-        stp_mode: str | None = None,
         evm_rpc_url: Optional[str] = None,
         private_key: Optional[str] = None,
         precompile_address: Optional[str] = None,
@@ -1479,7 +1473,6 @@ class ChainTxV1Client:
             reduce_only=reduce_only,
             post_only=0,
             cloid=cloid,
-            stp_mode=stp_mode,
             evm_rpc_url=evm_rpc_url,
             private_key=private_key,
             precompile_address=precompile_address,
@@ -1501,7 +1494,6 @@ class ChainTxV1Client:
         price: int,
         reduce_only: bool = False,
         cloid: Optional[int] = None,
-        stp_mode: str | None = None,
         evm_rpc_url: Optional[str] = None,
         private_key: Optional[str] = None,
         precompile_address: Optional[str] = None,
@@ -1526,7 +1518,6 @@ class ChainTxV1Client:
             reduce_only=reduce_only,
             post_only=0,
             cloid=cloid,
-            stp_mode=stp_mode,
             evm_rpc_url=evm_rpc_url,
             private_key=private_key,
             precompile_address=precompile_address,
@@ -1553,7 +1544,6 @@ class ChainTxV1Client:
         reduce_only: bool = False,
         post_only: int = 0,
         cloid: Optional[int] = None,
-        stp_mode: str | None = None,
         evm_rpc_url: Optional[str] = None,
         private_key: Optional[str] = None,
         precompile_address: Optional[str] = None,
@@ -1593,7 +1583,6 @@ class ChainTxV1Client:
                     "stop_loss": _optional_u128(stop_loss),
                     "reduce_only": bool(reduce_only),
                     "post_only": _post_only_param(post_only),
-                    "stp_mode": normalize_stp_mode(stp_mode),
                 }
             },
         )
@@ -1762,7 +1751,6 @@ class ChainTxV1Client:
         slippage: Optional[int] = None,
         auto_cancel: bool = False,
         cloid: Optional[int] = None,
-        stp_mode: str | None = None,
         evm_rpc_url: Optional[str] = None,
         private_key: Optional[str] = None,
         precompile_address: Optional[str] = None,
@@ -1797,7 +1785,6 @@ class ChainTxV1Client:
                 post_only=_post_only_param(post_only),
                 reduce_only=reduce_only,
                 cloid=cloid,
-                stp_mode=stp_mode,
             ),
         )
 
@@ -1812,7 +1799,6 @@ class ChainTxV1Client:
         slippage: Optional[int] = None,
         auto_cancel: bool = False,
         cloid: Optional[int] = None,
-        stp_mode: str | None = None,
         evm_rpc_url: Optional[str] = None,
         private_key: Optional[str] = None,
         precompile_address: Optional[str] = None,
@@ -1847,7 +1833,6 @@ class ChainTxV1Client:
                 post_only=_post_only_param(post_only),
                 reduce_only=reduce_only,
                 cloid=cloid,
-                stp_mode=stp_mode,
             ),
         )
 
@@ -1859,7 +1844,6 @@ class ChainTxV1Client:
         base_amount: int,
         reduce_only: bool = False,
         cloid: Optional[int] = None,
-        stp_mode: str | None = None,
         evm_rpc_url: Optional[str] = None,
         private_key: Optional[str] = None,
         precompile_address: Optional[str] = None,
@@ -1894,7 +1878,6 @@ class ChainTxV1Client:
                 post_only="None",
                 reduce_only=reduce_only,
                 cloid=cloid,
-                stp_mode=stp_mode,
             ),
         )
 
@@ -1906,7 +1889,6 @@ class ChainTxV1Client:
         base_amount: int,
         reduce_only: bool = False,
         cloid: Optional[int] = None,
-        stp_mode: str | None = None,
         evm_rpc_url: Optional[str] = None,
         private_key: Optional[str] = None,
         precompile_address: Optional[str] = None,
@@ -1941,7 +1923,6 @@ class ChainTxV1Client:
                 post_only="None",
                 reduce_only=reduce_only,
                 cloid=cloid,
-                stp_mode=stp_mode,
             ),
         )
 
@@ -1954,7 +1935,6 @@ class ChainTxV1Client:
         auto_cancel: bool = False,
         reduce_only: bool = False,
         cloid: Optional[int] = None,
-        stp_mode: str | None = None,
         evm_rpc_url: Optional[str] = None,
         private_key: Optional[str] = None,
         precompile_address: Optional[str] = None,
@@ -1990,7 +1970,6 @@ class ChainTxV1Client:
                 post_only="None",
                 reduce_only=reduce_only,
                 cloid=cloid,
-                stp_mode=stp_mode,
             ),
         )
 
@@ -2004,7 +1983,6 @@ class ChainTxV1Client:
         auto_cancel: bool = False,
         reduce_only: bool = False,
         cloid: Optional[int] = None,
-        stp_mode: str | None = None,
         evm_rpc_url: Optional[str] = None,
         private_key: Optional[str] = None,
         precompile_address: Optional[str] = None,
@@ -2040,7 +2018,6 @@ class ChainTxV1Client:
                 post_only="None",
                 reduce_only=reduce_only,
                 cloid=cloid,
-                stp_mode=stp_mode,
             ),
         )
 
@@ -2053,7 +2030,6 @@ class ChainTxV1Client:
         auto_cancel: bool = False,
         reduce_only: bool = False,
         cloid: Optional[int] = None,
-        stp_mode: str | None = None,
         evm_rpc_url: Optional[str] = None,
         private_key: Optional[str] = None,
         precompile_address: Optional[str] = None,
@@ -2089,7 +2065,6 @@ class ChainTxV1Client:
                 post_only="None",
                 reduce_only=reduce_only,
                 cloid=cloid,
-                stp_mode=stp_mode,
             ),
         )
 
@@ -2103,7 +2078,6 @@ class ChainTxV1Client:
         auto_cancel: bool = False,
         reduce_only: bool = False,
         cloid: Optional[int] = None,
-        stp_mode: str | None = None,
         evm_rpc_url: Optional[str] = None,
         private_key: Optional[str] = None,
         precompile_address: Optional[str] = None,
@@ -2139,7 +2113,6 @@ class ChainTxV1Client:
                 post_only="None",
                 reduce_only=reduce_only,
                 cloid=cloid,
-                stp_mode=stp_mode,
             ),
         )
 

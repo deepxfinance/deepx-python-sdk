@@ -18,7 +18,6 @@ from ._rpc_transport import (
     rpc_request_options,
     substrate_ws_request_endpoints,
 )
-from ._stp import compose_order_call
 from ._errors import ChainError, RPCError, parse_chain_error_code
 from ._runtime_compat import create_signed_extrinsic, uses_events_map
 
@@ -762,8 +761,7 @@ def _submit_signed_pallet_call(
             substrate = _create_substrate(substrate_cls, substrate_ws, timeout_ms=timeout_ms)
             _native_debug("_submit_signed_pallet_call:compose_call:start")
             t0 = time.monotonic()
-            call = compose_order_call(
-                substrate,
+            call = substrate.compose_call(
                 call_module=call_module,
                 call_function=call_function,
                 call_params=call_params,
@@ -1084,8 +1082,7 @@ def build_signed_pallet_call_extrinsic(
     substrate_cls = _get_substrate_interface_cls()
     keypair = _create_ecdsa_keypair(private_key)
     substrate = _create_substrate(substrate_cls, substrate_ws)
-    call = compose_order_call(
-        substrate,
+    call = substrate.compose_call(
         call_module=call_module,
         call_function=call_function,
         call_params=call_params,

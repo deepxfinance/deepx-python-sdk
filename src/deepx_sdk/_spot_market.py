@@ -3,9 +3,6 @@ from __future__ import annotations
 import json
 from typing import Optional
 
-from eth_abi import encode as abi_encode
-
-from ._stp import normalize_stp_mode, stp_mode_name
 from ._abi import (
     decode_abi,
     encode_call,
@@ -47,7 +44,6 @@ def _spot_place_params(
     post_only: str,
     reduce_only: bool,
     cloid: Optional[int],
-    stp_mode: str | None = None,
 ) -> dict:
     # On-chain `place_order` takes a single `params: SpotPlaceParams` arg.
     # `order_type` shares the perp OrderType enum: Limit(TimeInForce) |
@@ -65,7 +61,6 @@ def _spot_place_params(
             "order_type": order_type,
             "post_only": post_only,
             "reduce_only": bool(reduce_only),
-            "stp_mode": normalize_stp_mode(stp_mode),
         }
     }
 
@@ -100,7 +95,6 @@ def subaccount_place_order_buy_b(
     slippage: Optional[int] = None,
     auto_cancel: bool = False,
     cloid: Optional[int] = None,
-    stp_mode: str | None = None,
     chain_id: Optional[int] = None,
     gas_limit: Optional[int] = None,
     max_fee_per_gas: Optional[int] = None,
@@ -124,7 +118,6 @@ def subaccount_place_order_buy_b(
             post_only=_post_only_param(post_only),
             reduce_only=reduce_only,
             cloid=cloid,
-            stp_mode=stp_mode,
         ),
         is_buy=True,
         nonce_ms=nonce_ms,
@@ -148,7 +141,6 @@ def subaccount_place_order_sell_b(
     slippage: Optional[int] = None,
     auto_cancel: bool = False,
     cloid: Optional[int] = None,
-    stp_mode: str | None = None,
     chain_id: Optional[int] = None,
     gas_limit: Optional[int] = None,
     max_fee_per_gas: Optional[int] = None,
@@ -172,7 +164,6 @@ def subaccount_place_order_sell_b(
             post_only=_post_only_param(post_only),
             reduce_only=reduce_only,
             cloid=cloid,
-            stp_mode=stp_mode,
         ),
         is_buy=False,
         nonce_ms=nonce_ms,
@@ -193,7 +184,6 @@ def subaccount_place_order_buy_ioc_b(
     base_amount: int,
     reduce_only: bool = False,
     cloid: Optional[int] = None,
-    stp_mode: str | None = None,
     chain_id: Optional[int] = None,
     gas_limit: Optional[int] = None,
     max_fee_per_gas: Optional[int] = None,
@@ -216,7 +206,6 @@ def subaccount_place_order_buy_ioc_b(
             post_only="None",
             reduce_only=reduce_only,
             cloid=cloid,
-            stp_mode=stp_mode,
         ),
         is_buy=True,
         nonce_ms=nonce_ms,
@@ -237,7 +226,6 @@ def subaccount_place_order_sell_ioc_b(
     base_amount: int,
     reduce_only: bool = False,
     cloid: Optional[int] = None,
-    stp_mode: str | None = None,
     chain_id: Optional[int] = None,
     gas_limit: Optional[int] = None,
     max_fee_per_gas: Optional[int] = None,
@@ -260,7 +248,6 @@ def subaccount_place_order_sell_ioc_b(
             post_only="None",
             reduce_only=reduce_only,
             cloid=cloid,
-            stp_mode=stp_mode,
         ),
         is_buy=False,
         nonce_ms=nonce_ms,
@@ -282,7 +269,6 @@ def subaccount_place_market_order_buy_b_without_price(
     auto_cancel: bool = False,
     reduce_only: bool = False,
     cloid: Optional[int] = None,
-    stp_mode: str | None = None,
     chain_id: Optional[int] = None,
     gas_limit: Optional[int] = None,
     max_fee_per_gas: Optional[int] = None,
@@ -306,7 +292,6 @@ def subaccount_place_market_order_buy_b_without_price(
             post_only="None",
             reduce_only=reduce_only,
             cloid=cloid,
-            stp_mode=stp_mode,
         ),
         is_buy=True,
         nonce_ms=nonce_ms,
@@ -329,7 +314,6 @@ def subaccount_place_market_order_buy_b_with_price(
     auto_cancel: bool = False,
     reduce_only: bool = False,
     cloid: Optional[int] = None,
-    stp_mode: str | None = None,
     chain_id: Optional[int] = None,
     gas_limit: Optional[int] = None,
     max_fee_per_gas: Optional[int] = None,
@@ -353,7 +337,6 @@ def subaccount_place_market_order_buy_b_with_price(
             post_only="None",
             reduce_only=reduce_only,
             cloid=cloid,
-            stp_mode=stp_mode,
         ),
         is_buy=True,
         nonce_ms=nonce_ms,
@@ -375,7 +358,6 @@ def subaccount_place_market_order_sell_b_without_price(
     auto_cancel: bool = False,
     reduce_only: bool = False,
     cloid: Optional[int] = None,
-    stp_mode: str | None = None,
     chain_id: Optional[int] = None,
     gas_limit: Optional[int] = None,
     max_fee_per_gas: Optional[int] = None,
@@ -399,7 +381,6 @@ def subaccount_place_market_order_sell_b_without_price(
             post_only="None",
             reduce_only=reduce_only,
             cloid=cloid,
-            stp_mode=stp_mode,
         ),
         is_buy=False,
         nonce_ms=nonce_ms,
@@ -422,7 +403,6 @@ def subaccount_place_market_order_sell_b_with_price(
     auto_cancel: bool = False,
     reduce_only: bool = False,
     cloid: Optional[int] = None,
-    stp_mode: str | None = None,
     chain_id: Optional[int] = None,
     gas_limit: Optional[int] = None,
     max_fee_per_gas: Optional[int] = None,
@@ -446,7 +426,6 @@ def subaccount_place_market_order_sell_b_with_price(
             post_only="None",
             reduce_only=reduce_only,
             cloid=cloid,
-            stp_mode=stp_mode,
         ),
         is_buy=False,
         nonce_ms=nonce_ms,
@@ -472,7 +451,6 @@ def modify_spot_order(
     post_only: int = 0,
     reduce_only: bool = False,
     cloid: Optional[int] = None,
-    stp_mode: str | None = None,
     fast_cancel: bool = False,
     chain_id: Optional[int] = None,
     gas_limit: Optional[int] = None,
@@ -513,7 +491,6 @@ def modify_spot_order(
                     post_only=_post_only_param(post_only),
                     reduce_only=reduce_only,
                     cloid=cloid,
-                    stp_mode=stp_mode,
                 )["params"]
             }
         },
@@ -814,20 +791,16 @@ def get_spot_market_spec(
 
 
 _SPOT_ORDER_TUPLE = "(bytes32,uint64,address,uint256,uint256,uint256,uint32,uint8,bool,uint8,uint8)"
-_SPOT_ORDER_TUPLE_STP = _SPOT_ORDER_TUPLE[:-1] + ",uint8)"
 # `id` was U256 before the chain moved spot order ids to u64.
 _SPOT_ORDER_TUPLE_LEGACY = "(bytes32,uint256,address,uint256,uint256,uint256,uint32,uint8,bool,uint8,uint8)"
 _SPOT_MARKET_SPEC_TUPLE = "(uint128,uint128,uint128)"
 
 
 def _decode_spot_orders_tuple(raw: bytes) -> tuple:
-    for tuple_type in (_SPOT_ORDER_TUPLE_STP, _SPOT_ORDER_TUPLE, _SPOT_ORDER_TUPLE_LEGACY):
+    for tuple_type in (_SPOT_ORDER_TUPLE, _SPOT_ORDER_TUPLE_LEGACY):
         try:
             (orders,) = decode_abi([f"{tuple_type}[]"], raw)
-            # A shorter tuple decoder can accept trailing bytes and silently
-            # misalign the second order. Require the exact ABI layout.
-            if abi_encode([f"{tuple_type}[]"], [orders]) == raw:
-                return orders
+            return orders
         except Exception:
             continue
     raise RuntimeError("unable to decode userActiveSpotOrders response with supported ABI layouts")
@@ -846,7 +819,6 @@ def _decode_spot_order(order: tuple) -> SpotOrderInfo:
         is_buy=bool(order[8]),
         order_type=int(order[9]),
         slippage=int(order[10]),
-        stp_mode=stp_mode_name(int(order[11])) if len(order) == 12 else None,
     )
 
 

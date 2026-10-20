@@ -566,7 +566,6 @@ def test_place_order_shapes_ready_return_and_timestamp_nonces() -> None:
                 "call_function": "place_order",
                 "call_params": {
                     "params": {
-                        "stp_mode": None,
                         "subaccount": "0x" + "22" * 20,
                         "market_id": 3,
                         "is_long": True,
@@ -586,7 +585,6 @@ def test_place_order_shapes_ready_return_and_timestamp_nonces() -> None:
                 "call_function": "place_order",
                 "call_params": {
                     "params": {
-                        "stp_mode": None,
                         "subaccount": "0x" + "22" * 20,
                         "market_id": 4,
                         "is_long": False,
@@ -606,7 +604,6 @@ def test_place_order_shapes_ready_return_and_timestamp_nonces() -> None:
                 "call_function": "place_order",
                 "call_params": {
                     "params": {
-                        "stp_mode": None,
                         "subaccount": "0x" + "22" * 20,
                         "market_id": 5,
                         "is_long": True,
@@ -766,7 +763,6 @@ def test_async_spot_place_order_exact_shapes_and_decoders() -> None:
                 "call_function": "place_order",
                 "call_params": {
                     "params": {
-                        "stp_mode": None,
                         "subaccount": "0x" + "22" * 20,
                         "pair": pair,
                         "is_buy": True,
@@ -784,7 +780,6 @@ def test_async_spot_place_order_exact_shapes_and_decoders() -> None:
                 "call_function": "place_order",
                 "call_params": {
                     "params": {
-                        "stp_mode": None,
                         "subaccount": "0x" + "22" * 20,
                         "pair": pair,
                         "is_buy": False,
@@ -802,7 +797,6 @@ def test_async_spot_place_order_exact_shapes_and_decoders() -> None:
                 "call_function": "place_order",
                 "call_params": {
                     "params": {
-                        "stp_mode": None,
                         "subaccount": "0x" + "22" * 20,
                         "pair": pair,
                         "is_buy": True,
@@ -820,7 +814,6 @@ def test_async_spot_place_order_exact_shapes_and_decoders() -> None:
                 "call_function": "place_order",
                 "call_params": {
                     "params": {
-                        "stp_mode": None,
                         "subaccount": "0x" + "22" * 20,
                         "pair": pair,
                         "is_buy": False,
@@ -838,7 +831,6 @@ def test_async_spot_place_order_exact_shapes_and_decoders() -> None:
                 "call_function": "place_order",
                 "call_params": {
                     "params": {
-                        "stp_mode": None,
                         "subaccount": "0x" + "22" * 20,
                         "pair": pair,
                         "is_buy": True,
@@ -856,7 +848,6 @@ def test_async_spot_place_order_exact_shapes_and_decoders() -> None:
                 "call_function": "place_order",
                 "call_params": {
                     "params": {
-                        "stp_mode": None,
                         "subaccount": "0x" + "22" * 20,
                         "pair": pair,
                         "is_buy": False,

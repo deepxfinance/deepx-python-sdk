@@ -50,8 +50,6 @@ from ._types import (
     SubaccountUserStats,
     SystemAccountInfo,
     TotalCollateralAndMarginInfo,
-    TradeGroupInfo,
-    TradeGroupInvitation,
     TxConfig,
     TxResult,
 )
@@ -168,8 +166,6 @@ __all__ = [
     "TransactionManager",
     "TransactionSnapshot",
     "TransactionUsurped",
-    "TradeGroupInfo",
-    "TradeGroupInvitation",
     "TxConfig",
     "TxError",
     "TxResult",

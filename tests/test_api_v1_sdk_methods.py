@@ -1345,7 +1345,6 @@ def test_api_v1_chain_tx_order_methods_build_pallet_calls(
             "place_order",
             {
                 "params": {
-                    "stp_mode": None,
                     "subaccount": _VALID_SUBACCOUNT,
                     "market_id": 1,
                     "is_long": True,
@@ -1374,7 +1373,6 @@ def test_api_v1_chain_tx_order_methods_build_pallet_calls(
             "place_order",
             {
                 "params": {
-                    "stp_mode": None,
                     "subaccount": _VALID_SUBACCOUNT,
                     "market_id": 1,
                     "is_long": True,
@@ -1444,7 +1442,6 @@ def test_api_v1_chain_tx_order_methods_build_pallet_calls(
             "place_order",
             {
                 "params": {
-                    "stp_mode": None,
                     "subaccount": _VALID_SUBACCOUNT,
                     "pair": pair_hex,
                     "is_buy": True,
@@ -1472,7 +1469,6 @@ def test_api_v1_chain_tx_order_methods_build_pallet_calls(
             "place_order",
             {
                 "params": {
-                    "stp_mode": None,
                     "subaccount": _VALID_SUBACCOUNT,
                     "pair": pair_hex,
                     "is_buy": True,
@@ -1500,7 +1496,6 @@ def test_api_v1_chain_tx_order_methods_build_pallet_calls(
             "place_order",
             {
                 "params": {
-                    "stp_mode": None,
                     "subaccount": _VALID_SUBACCOUNT,
                     "pair": pair_hex,
                     "is_buy": False,

@@ -78,7 +78,6 @@ def test_perp_order_fields_and_result(encoder, kind, expected):
     call = encoder.calls[-1]
     assert (call["call_module"], call["call_function"]) == ("PerpMarket", "place_order")
     assert call["call_params"] == {"params": {
-        "stp_mode": None,
         "subaccount": ACCOUNT, "market_id": 3, "is_long": False,
         "size": 10**18, "price": 0 if kind == "market" else 2000_000000,
         "order_type": expected, "take_profit": 2100_000000,
@@ -106,7 +105,6 @@ def test_spot_order_fields(encoder, side, is_buy, kind, expected):
     call = encoder.calls[-1]
     assert (call["call_module"], call["call_function"]) == ("SpotMarket", "place_order")
     assert call["call_params"] == {"params": {
-        "stp_mode": None,
         "subaccount": ACCOUNT, "pair": PAIR, "is_buy": is_buy,
         "quote_amount": 100_000000, "base_amount": 10**18,
         "order_type": expected, "post_only": "None", "reduce_only": True,

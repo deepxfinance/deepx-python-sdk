@@ -261,13 +261,3 @@ Validation for this source candidate:
 - Wheel and source distribution passed `twine check`; archive inspection
   confirmed the expected source, version, and regression tests and excluded
   local scratch data. Reports remain under `scratch/sdk-testnet-adaptation/`.
-
-
-## October 15, 2026 development STP adaptation
-
-Node `devnet` commit `2b6d9f8` adds optional per-order STP fields, expanded order
-views, and wallet trade-group management. Current development RPC reports runtime
-220; public testnet still reports runtime 376, so this SDK adaptation lands on
-`devnet` without merging into `main`. See the [STP guide](stp.md) for behavior and
-validation boundaries. The existing unpublished source version remains
-`0.2.7rc3`; this change does not publish a release or imply funded acceptance.

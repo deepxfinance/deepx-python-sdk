@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 from typing import Any, Optional
 
-from ._stp import normalize_stp_mode, stp_mode_name
 from ._abi import (
     decode_abi,
     encode_call,
@@ -53,7 +52,6 @@ def place_perp_order(
     reduce_only: bool = False,
     post_only: int = 0,
     cloid: Optional[int] = None,
-    stp_mode: str | None = None,
     chain_id: Optional[int] = None,
     gas_limit: Optional[int] = None,
     max_fee_per_gas: Optional[int] = None,
@@ -90,7 +88,6 @@ def place_perp_order(
                 reduce_only=reduce_only,
                 post_only=post_only,
                 cloid=cloid,
-                stp_mode=stp_mode,
             )
         },
         pallet="PerpMarket",
@@ -120,7 +117,6 @@ def place_perp_order_limit(
     reduce_only: bool = False,
     post_only: int = 0,
     cloid: Optional[int] = None,
-    stp_mode: str | None = None,
     chain_id: Optional[int] = None,
     gas_limit: Optional[int] = None,
     max_fee_per_gas: Optional[int] = None,
@@ -146,7 +142,6 @@ def place_perp_order_limit(
         reduce_only=reduce_only,
         post_only=post_only,
         cloid=cloid,
-        stp_mode=stp_mode,
         chain_id=chain_id,
         gas_limit=gas_limit,
         max_fee_per_gas=max_fee_per_gas,
@@ -174,7 +169,6 @@ def place_perp_order_ioc(
     reduce_only: bool = False,
     post_only: int = 0,
     cloid: Optional[int] = None,
-    stp_mode: str | None = None,
     chain_id: Optional[int] = None,
     gas_limit: Optional[int] = None,
     max_fee_per_gas: Optional[int] = None,
@@ -200,7 +194,6 @@ def place_perp_order_ioc(
         reduce_only=reduce_only,
         post_only=post_only,
         cloid=cloid,
-        stp_mode=stp_mode,
         chain_id=chain_id,
         gas_limit=gas_limit,
         max_fee_per_gas=max_fee_per_gas,
@@ -225,7 +218,6 @@ def place_perp_order_market(
     slippage: Optional[int] = None,
     reduce_only: bool = False,
     cloid: Optional[int] = None,
-    stp_mode: str | None = None,
     chain_id: Optional[int] = None,
     gas_limit: Optional[int] = None,
     max_fee_per_gas: Optional[int] = None,
@@ -252,7 +244,6 @@ def place_perp_order_market(
         reduce_only=reduce_only,
         post_only=0,
         cloid=cloid,
-        stp_mode=stp_mode,
         chain_id=chain_id,
         gas_limit=gas_limit,
         max_fee_per_gas=max_fee_per_gas,
@@ -354,7 +345,6 @@ def modify_perp_order(
     reduce_only: bool = False,
     post_only: int = 0,
     cloid: Optional[int] = None,
-    stp_mode: str | None = None,
     fast_cancel: bool = False,
     chain_id: Optional[int] = None,
     gas_limit: Optional[int] = None,
@@ -434,7 +424,6 @@ def modify_perp_order(
                     reduce_only=reduce_only,
                     post_only=post_only,
                     cloid=cloid,
-                    stp_mode=stp_mode,
                 )
             }
         },
@@ -864,7 +853,6 @@ def _perp_place_params(
     reduce_only: bool,
     post_only: int,
     cloid: Optional[int],
-    stp_mode: str | None = None,
 ) -> dict:
     _ = cloid
     return {
@@ -878,7 +866,6 @@ def _perp_place_params(
         "stop_loss": _optional_u128(stop_loss),
         "reduce_only": bool(reduce_only),
         "post_only": _post_only_param(post_only),
-        "stp_mode": normalize_stp_mode(stp_mode),
     }
 
 
@@ -1159,8 +1146,7 @@ def order_info(
             if arg_type == "uint64" and selector_error:
                 continue
             raise
-        tuple_type = _PERP_ORDER_TUPLE_STP if len(raw) == 16 * 32 else _PERP_ORDER_TUPLE
-        (order,) = decode_abi([tuple_type], raw)
+        (order,) = decode_abi([_PERP_ORDER_TUPLE], raw)
         return _decode_perp_order(order)
     raise RuntimeError("orderInfo is not exposed by the perp precompile at this endpoint")
 
@@ -1321,7 +1307,6 @@ _ACTIVE_ORDER_TUPLE = "(address,uint16,uint8,uint8,uint64,uint128,uint64)"
 _PERP_ORDER_TUPLE = (
     "(uint64,address,uint16,bool,uint128,uint128,uint8,uint64,uint64,uint64,uint8,uint128,uint128,uint128,uint128)"
 )
-_PERP_ORDER_TUPLE_STP = _PERP_ORDER_TUPLE[:-1] + ",uint8)"
 _PERP_POSITION_TUPLE = (
     "(uint16,bool,uint128,uint128,uint64,int128,uint64,int128,int128,address,uint128,uint128,uint128)"
 )
@@ -1422,7 +1407,6 @@ def _decode_perp_order(order: tuple) -> PerpOrderInfo:
         size_remain=int(order[12]),
         take_profit=int(order[13]),
         stop_loss=int(order[14]),
-        stp_mode=stp_mode_name(int(order[15])) if len(order) == 16 else None,
     )
 
 
