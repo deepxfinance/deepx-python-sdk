@@ -1337,4 +1337,3 @@ res = chain.spot_market.subaccount_place_order_buy_b(
 )
 print(res.order_id, res.tx_hash)
 ```
-
