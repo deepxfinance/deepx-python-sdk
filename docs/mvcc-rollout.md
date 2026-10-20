@@ -285,7 +285,8 @@ and HTTP errors. See the README for limits, intervals and stream recovery.
 These endpoints are absent from both testnet source and live OpenAPI. All four
 testnet REST probes returned 404; its WebSocket rejected the new channel with
 10015. SDK `main` therefore receives no new endpoint methods in this round.
-The source version remains the unpublished `0.2.7rc3`; no release is published.
+At the time of that API review, the source version was the unpublished
+`0.2.7rc3`. The subsequent `v0.2.7` release is built from `main`.
 
 Read-only live checks on October 20:
 
