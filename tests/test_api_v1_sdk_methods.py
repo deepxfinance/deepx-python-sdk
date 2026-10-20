@@ -1355,6 +1355,7 @@ def test_api_v1_chain_tx_order_methods_build_pallet_calls(
                     "stop_loss": None,
                     "reduce_only": False,
                     "post_only": "None",
+                    "stp_mode": "None",
                 }
             },
         ),
@@ -1383,6 +1384,7 @@ def test_api_v1_chain_tx_order_methods_build_pallet_calls(
                     "stop_loss": None,
                     "reduce_only": False,
                     "post_only": "None",
+                    "stp_mode": "None",
                 }
             },
         ),
@@ -1450,6 +1452,7 @@ def test_api_v1_chain_tx_order_methods_build_pallet_calls(
                     "order_type": {"Limit": "GTC"},
                     "post_only": "None",
                     "reduce_only": False,
+                    "stp_mode": "None",
                 }
             },
         ),
@@ -1477,6 +1480,7 @@ def test_api_v1_chain_tx_order_methods_build_pallet_calls(
                     "order_type": {"Market": 9},
                     "post_only": "None",
                     "reduce_only": False,
+                    "stp_mode": "None",
                 }
             },
         ),
@@ -1504,6 +1508,7 @@ def test_api_v1_chain_tx_order_methods_build_pallet_calls(
                     "order_type": {"Market": None},
                     "post_only": "None",
                     "reduce_only": False,
+                    "stp_mode": "None",
                 }
             },
         ),
