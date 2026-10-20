@@ -1,19 +1,18 @@
 # MVCC SDK testing and rollout
 
-Status: source candidate `0.2.7rc3`, October 14, 2026. Public testnet has moved
-to MVCC; funded-trading acceptance is still pending.
+Status: `0.2.7` release, October 20, 2026. Public testnet uses MVCC.
+The sections below record deployment observations and validation history.
 
 ## Branch and version policy
 
 - Development began on `feat/mvcc-compat`, based on stable SDK commit `19f4c0f`.
 - `devnet` is the internal-validation branch; changes merge into `main` for the
-  public testnet. Current source targets `0.2.7rc3`. This does not imply funded
-  trading or sustained-availability acceptance has passed.
-- Published `v0.2.6`, `v0.2.7rc1`, and `v0.2.7rc2` remain immutable. The `rc3`
-  source has not been published as a release. Pin exact published tags for bots.
-- Once chain deployment and the acceptance checks below are confirmed, set version
-  `0.2.7` and publish `v0.2.7`. Recheck the available version before tagging if
-  another release has occurred meanwhile.
+  public testnet. Release `v0.2.7` is built from `main`; internal-only API
+  additions remain on `devnet` until public testnet supports them.
+- Published tags remain immutable. Pin exact published tags for bots.
+- `v0.2.7` includes updated public-testnet REST queries and explicitly encodes
+  `Some(StpMode::None)` for spot and perpetual orders, including atomic order
+  modifications. STP arguments and trade-group APIs are not exposed.
 
 Changing chain internals does not require advertising a new SDK `net` option.
 Compatibility is selected from metadata, not runtime-version thresholds or hostnames.

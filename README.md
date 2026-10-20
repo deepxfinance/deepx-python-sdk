@@ -10,9 +10,9 @@ Clients:
 - `SDK` as a thin wrapper holding both clients.
 
 The public testnet now uses the MVCC runtime (chain ID 4856). Current source
-version `0.2.7rc3` includes MVCC compatibility and the updated REST queries.
-Funded trading and sustained-availability acceptance remain pending; see the
-[MVCC testing and rollout guide](docs/mvcc-rollout.md).
+version `0.2.7` includes MVCC compatibility, updated REST queries, and explicit
+STP-off order encoding. See the [MVCC testing and rollout guide](docs/mvcc-rollout.md)
+for deployment and validation history.
 
 ## Install
 
@@ -614,8 +614,6 @@ Quantities use the asset's own unit, not USD or scaled chain integers. The SDK p
 `portfolio["availableMargin"]` is available margin in USDC; `transferLimits` describes asset transfers and must not be used as opening-position margin. `assets` filters requested expansions, not account-wide risk calculations; supply `include` when filtering portfolio assets. REST uses comma-separated filters and WS uses arrays.
 
 Migration: the backend removed `/withdrawal-limits/{asset}` in favor of `/transfer-limits/{asset}`. Replace `subaccount_withdrawal_limit()` with `subaccount_transfer_limit()`, `maxWithdrawableQty` with `maxTransferableQty`, and `withdrawalLimits` with `transferLimits` in REST/WS portfolio requests and response handling. The old SDK method raises a migration error without sending a request; the old `include` name is rejected locally.
-
-See [Known Limitations](#known-limitations) for account API consistency constraints.
 
 ## On-chain usage
 
@@ -1374,12 +1372,3 @@ res = chain.spot_market.subaccount_place_order_buy_b(
 print(res.order_id, res.tx_hash)
 ```
 
-## Known Limitations
-
-### Cross-request consistency
-
-API data returned by the SDK is assembled server-side from multiple underlying reads and is not guaranteed to reflect the same chain block — neither within a single response that combines values from different sources, nor across separate requests.
-
-Fields may be mutually inconsistent, producing combinations that never existed on any single block, and `time` is the server wall-clock time rather than the block timestamp.
-
-**Do not treat fields as an atomically consistent snapshot for liquidation or risk logic.**
