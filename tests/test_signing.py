@@ -82,6 +82,7 @@ def test_perp_order_fields_and_result(encoder, kind, expected):
         "size": 10**18, "price": 0 if kind == "market" else 2000_000000,
         "order_type": expected, "take_profit": 2100_000000,
         "stop_loss": 1900_000000, "reduce_only": True, "post_only": "None",
+        "stp_mode": "None",
     }}
     assert signed.nonce == NOW + 1
     assert signed.runtime_version == 371
@@ -108,6 +109,7 @@ def test_spot_order_fields(encoder, side, is_buy, kind, expected):
         "subaccount": ACCOUNT, "pair": PAIR, "is_buy": is_buy,
         "quote_amount": 100_000000, "base_amount": 10**18,
         "order_type": expected, "post_only": "None", "reduce_only": True,
+        "stp_mode": "None",
     }}
 
 

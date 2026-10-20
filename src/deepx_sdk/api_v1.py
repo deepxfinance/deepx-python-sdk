@@ -133,6 +133,8 @@ def _spot_place_params(
             "order_type": order_type,
             "post_only": post_only,
             "reduce_only": bool(reduce_only),
+            # Some(StpMode::None) disables STP; outer None uses the chain default.
+            "stp_mode": "None",
         }
     }
 
@@ -1645,6 +1647,8 @@ class ChainTxV1Client:
                     "stop_loss": _optional_u128(stop_loss),
                     "reduce_only": bool(reduce_only),
                     "post_only": _post_only_param(post_only),
+                    # Explicitly disable STP instead of using the chain default.
+                    "stp_mode": "None",
                 }
             },
         )

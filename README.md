@@ -535,6 +535,12 @@ additions do not resolve that incompatibility.
 
 Use the public signing functions when your application owns REST/WS submission and transaction tracking. They do not require `ChainClient` or `ApiClient`:
 
+Spot and perpetual orders on both devnet and testnet explicitly disable STP.
+The SDK encodes `Some(StpMode::None)` as `stp_mode="None"` internally, including
+the placement inside atomic order modifications. Python `None` would select
+the chain default, currently `ExpireMaker`, and would enable STP. There is no
+public STP argument or trade-group API.
+
 ```python
 import os
 from deepx_sdk import build_signed_perp_order

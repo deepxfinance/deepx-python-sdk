@@ -173,6 +173,7 @@ def test_perp_order_actions_use_pallet_calls(monkeypatch) -> None:
             "stop_loss": None,
             "reduce_only": False,
             "post_only": "MustPostOnly",
+            "stp_mode": "None",
         }
     }
     assert captured["submit"]["pallet"] == "PerpMarket"
@@ -217,6 +218,7 @@ def test_perp_order_actions_ioc_uses_pallet_calls(monkeypatch) -> None:
             "stop_loss": None,
             "reduce_only": True,
             "post_only": "None",
+            "stp_mode": "None",
         }
     }
     assert captured["submit"]["pallet"] == "PerpMarket"
@@ -319,6 +321,7 @@ def test_perp_order_action_variants_and_validation(monkeypatch) -> None:
             "stop_loss": None,
             "reduce_only": True,
             "post_only": "None",
+            "stp_mode": "None",
         }
     }
 
@@ -542,6 +545,7 @@ def test_perp_modify_order_builds_cancel_place_ops(monkeypatch) -> None:
                     "stop_loss": None,
                     "reduce_only": False,
                     "post_only": "None",
+                    "stp_mode": "None",
                 }
             }
         },
@@ -659,6 +663,7 @@ def test_spot_modify_order_builds_cancel_place_ops(monkeypatch) -> None:
                     "order_type": {"Limit": "GTC"},
                     "post_only": "None",
                     "reduce_only": False,
+                    "stp_mode": "None",
                 }
             }
         },
@@ -850,6 +855,7 @@ def test_spot_order_actions_use_pallet_calls(monkeypatch) -> None:
             "order_type": {"Limit": "GTC"},
             "post_only": "MustPostOnly",
             "reduce_only": False,
+            "stp_mode": "None",
         }
     }
     assert captured["submit"]["event"] == "StateOrderBuy"
@@ -889,6 +895,7 @@ def test_spot_order_action_variants_and_validation(monkeypatch) -> None:
             "order_type": {"Limit": "GTC"},
             "post_only": "Adaptive",
             "reduce_only": True,
+            "stp_mode": "None",
         }
     }
 
@@ -960,6 +967,7 @@ def test_spot_order_actions_ioc_uses_pallet_calls(monkeypatch) -> None:
             "order_type": {"Limit": "IOC"},
             "post_only": "None",
             "reduce_only": True,
+            "stp_mode": "None",
         }
     }
     assert captured["submit"]["event"] == "StateOrderBuy"
