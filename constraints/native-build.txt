@@ -1,0 +1,2 @@
+# Coincurve 20 source builds on Python 3.14 require the older build configuration.
+scikit-build-core<0.10; python_version >= '3.14'

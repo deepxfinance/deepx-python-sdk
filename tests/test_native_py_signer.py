@@ -490,15 +490,6 @@ def test_submit_pallet_call_wait_event(monkeypatch) -> None:
     _native_py = _load_native_py()
     monkeypatch.setattr(_native_py.time, "time", lambda: 1.234)
 
-    class _DummyKeypair:
-        @staticmethod
-        def create_from_private_key(**kwargs):
-            assert "private_key" in kwargs
-            return "keypair"
-
-    class _DummyKeypairType:
-        ECDSA = 2
-
     class _DummyEventObj:
         value = {
             "module_id": "Lending",
@@ -546,8 +537,8 @@ def test_submit_pallet_call_wait_event(monkeypatch) -> None:
     monkeypatch.setattr(_native_py, "_get_substrate_interface_cls", lambda: _DummySubstrate)
     monkeypatch.setattr(
         _native_py,
-        "_get_substrate_keypair_libs",
-        lambda: (_DummyKeypair, _DummyKeypairType),
+        "_create_ecdsa_keypair",
+        lambda private_key: "keypair",
     )
 
     result = _native_py.submit_pallet_call_wait_event(
@@ -716,15 +707,6 @@ def test_rpc_call_http_and_json_rpc_errors(monkeypatch) -> None:
 def test_build_signed_pallet_call_extrinsic_uses_nonce_ms(monkeypatch) -> None:
     _native_py = _load_native_py()
 
-    class _DummyKeypair:
-        @staticmethod
-        def create_from_private_key(**kwargs):
-            assert "private_key" in kwargs
-            return "keypair"
-
-    class _DummyKeypairType:
-        ECDSA = 2
-
     class _DummyExtrinsicData:
         def to_hex(self) -> str:
             return "0xxt"
@@ -753,8 +735,8 @@ def test_build_signed_pallet_call_extrinsic_uses_nonce_ms(monkeypatch) -> None:
     monkeypatch.setattr(_native_py, "_get_substrate_interface_cls", lambda: _DummySubstrate)
     monkeypatch.setattr(
         _native_py,
-        "_get_substrate_keypair_libs",
-        lambda: (_DummyKeypair, _DummyKeypairType),
+        "_create_ecdsa_keypair",
+        lambda private_key: "keypair",
     )
 
     signed = _native_py.build_signed_pallet_call_extrinsic(

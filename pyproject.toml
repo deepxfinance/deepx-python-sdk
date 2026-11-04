@@ -27,6 +27,8 @@ classifiers = [
 requires-python = ">=3.12"
 dependencies = [
     "eth-account>=0.11.0,<1.0.0",
+    "coincurve>=21.0.0,<22.0.0; python_version < '3.14'",
+    "coincurve>=20.0.0,<21.0.0; python_version >= '3.14'",
     "eth-abi>=4.0.0,<6.0.0",
     "eth-utils>=2.0.0,<7.0.0",
     "hexbytes>=0.3.1,<2.0.0",
@@ -34,6 +36,7 @@ dependencies = [
     "substrate-interface>=1.7.0,<2.0.0",
     "websockets>=11.0,<18.0",
     "python-socks>=2.0",
+    "urllib3>=2.8.0,<3.0.0",
 ]
 
 [project.urls]
@@ -51,6 +54,10 @@ dev = [
 
 [tool.setuptools]
 package-dir = {"" = "src"}
+
+[tool.uv]
+# Coincurve 20's source build uses the pre-0.10 scikit-build-core configuration.
+build-constraint-dependencies = ["scikit-build-core<0.10; python_version >= '3.14'"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -834,7 +834,7 @@ def _submit_lending_call(
 
 def _signer_address(private_key: str) -> str:
     try:
-        from eth_account import Account
+        from ._signing_backend import NativeAccount as Account
     except Exception as exc:  # pragma: no cover
         raise ImportError("Missing eth-account dependency") from exc
     return normalize_address(Account.from_key(private_key).address)

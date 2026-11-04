@@ -220,7 +220,7 @@ def generate_bridge_salt() -> str:
 
 
 def _evm_address_from_key(private_key: str) -> str:
-    from eth_account import Account
+    from ._signing_backend import NativeAccount as Account
 
     return str(Account.from_key(private_key).address)
 

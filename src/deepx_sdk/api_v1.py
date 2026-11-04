@@ -782,7 +782,7 @@ class AccountV1Client:
         key = private_key or self._client.private_key
         if not key:
             raise ValueError("private_key is required to sign the quota claim")
-        from eth_account import Account
+        from ._signing_backend import NativeAccount as Account
         from eth_account.messages import encode_defunct
 
         account = Account.from_key(key)

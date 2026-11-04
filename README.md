@@ -1,6 +1,9 @@
 # deepx-python-sdk (Python)
 
-Python SDK that encodes ABI calls in Python and signs/submits transactions via Substrate `ethereum.transact` using a pure-Python implementation.
+Python SDK that encodes ABI calls in Python and signs/submits transactions via Substrate `ethereum.transact`. Private-key operations use libsecp256k1 through the required `coincurve` dependency, with no pure-Python signing fallback.
+
+See the [dependency security notes](docs/dependency-security.md) for native build
+requirements, including Python 3.14 installation instructions.
 
 Clients:
 

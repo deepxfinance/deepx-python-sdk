@@ -26,8 +26,6 @@ _keccak = None
 _to_canonical_address = None
 _to_checksum_address = None
 _SubstrateInterface = None
-_SubstrateKeypair = None
-_SubstrateKeypairType = None
 DEFAULT_PRECOMPILE_GAS_LIMIT = 500_000
 DEFAULT_SYSTEM_PRECOMPILE_ADDRESS = "0x0000000000000000000000000000000000000452"
 DEFAULT_SUBMIT_TIMEOUT_MS = 120_000
@@ -432,7 +430,7 @@ def _get_signing_libs() -> tuple[Any, Any, Any, Any]:
     global _to_checksum_address
     if _Account is None:
         try:
-            from eth_account import Account
+            from ._signing_backend import NativeAccount as Account
             from eth_utils import keccak, to_canonical_address, to_checksum_address
         except Exception as exc:
             raise ImportError(
@@ -449,6 +447,8 @@ def _parse_account(private_key: str, account_lib: Any) -> Any:
     key = private_key.strip()
     try:
         return account_lib.from_key(key)
+    except ImportError:
+        raise
     except Exception as exc:
         raise RuntimeError(f"invalid private_key: {exc}") from exc
 
@@ -690,45 +690,10 @@ def _get_substrate_interface_cls() -> Any:
     return _SubstrateInterface
 
 
-def _get_substrate_keypair_libs() -> tuple[Any, Any]:
-    global _SubstrateKeypair
-    global _SubstrateKeypairType
-    if _SubstrateKeypair is None:
-        try:
-            from substrateinterface import Keypair, KeypairType
-        except Exception as exc:
-            raise ImportError(
-                "Missing dependency for Substrate signing. Install with "
-                "'pip install substrate-interface'."
-            ) from exc
-        _SubstrateKeypair = Keypair
-        _SubstrateKeypairType = KeypairType
-    return _SubstrateKeypair, _SubstrateKeypairType
-
-
 def _create_ecdsa_keypair(private_key: str) -> Any:
-    keypair_cls, keypair_type = _get_substrate_keypair_libs()
-    raw = private_key.strip()
-    if raw.startswith("0x"):
-        raw = raw[2:]
-    try:
-        bytes.fromhex(raw)
-    except Exception as exc:
-        raise RuntimeError(f"invalid private_key: {exc}") from exc
+    from ._signing_backend import NativeKeypair
 
-    key_hex = "0x" + raw
-    crypto_type = getattr(keypair_type, "ECDSA", 2)
-    errors: list[str] = []
-    for kwargs in (
-        {"private_key": key_hex, "crypto_type": crypto_type},
-        {"private_key": bytes.fromhex(raw), "crypto_type": crypto_type},
-        {"private_key": key_hex},
-    ):
-        try:
-            return keypair_cls.create_from_private_key(**kwargs)
-        except Exception as exc:
-            errors.append(str(exc))
-    raise RuntimeError("create ECDSA substrate keypair failed: " + " | ".join(errors))
+    return NativeKeypair(private_key.strip())
 
 
 def _submit_signed_pallet_call(
