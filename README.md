@@ -781,14 +781,7 @@ res = chain.perp_market.close_position_market(
 print(res.order_id, res.tx_hash)
 ```
 
-```python
-res = chain.perp_market.set_profit_and_loss_point(
-    market_id=3,
-    take_profit_point=123,
-    stop_loss_point=100,
-)
-print(res.tx_hash, res.extrinsic_hash)
-```
+Use [position TP/SL settings](#position-take-profit-and-stop-loss) on runtimes that support `update_tp_sl`. The legacy `set_profit_and_loss_point` method remains available for older runtimes only.
 
 ### Spot market orders
 
@@ -1076,6 +1069,53 @@ res = chain.lending.buy_quota(
 ```
 
 A runnable version is in [`examples/quota.py`](examples/quota.py).
+
+## Position take-profit and stop-loss
+
+Use `chain.perp_market.update_tp_sl` to create, update, or cancel settings for an existing position. Multiple actions succeed or fail together. The connected runtime must support `PerpMarket.update_tp_sl`. Configure explicit RPC endpoints for an internal network, as described above.
+
+New settings accept `Mark` and `Index`. The default source is `Mark`. Prices use six decimal places. Quantities use the base asset's smallest unit. Leave `quantity` unset for the entire remaining position. Leave `limit_price` unset for market execution. Market `slippage` uses basis points.
+
+The following prices are hypothetical. Select trigger prices that satisfy the current market conditions before submission.
+
+```python
+from deepx_sdk import TpSlAction, TpSlConfig
+
+result = chain.perp_market.update_tp_sl(
+    symbol="ETH-USDC",
+    actions=[
+        TpSlAction("Create", TpSlConfig("TakeProfit", 3_400 * 10**6)),
+        TpSlAction("Create", TpSlConfig("StopLoss", 2_900 * 10**6, source="Index")),
+    ],
+)
+```
+
+To update a setting, use `TpSlAction("Update", config, setting_id)`. To cancel a setting, use `TpSlAction("Cancel", setting_id=setting_id)`. Use the existing setting ID. An update must retain its condition and quantity type. To change either value, cancel the setting and create another one.
+
+`AsyncChainClient.perp_market.update_tp_sl(market_id=market_id, actions=actions)` returns a transaction ticket. Await `ticket.executed()` for chain confirmation. Confirmation means that the settings changed. It does not confirm a trigger or a fill.
+
+An unavailable source price pauses trigger checks. The protocol does not select another source. Triggered orders follow normal reduce-only, margin, order-count, slippage, and liquidity limits. A trigger can fail, and an order can fill partially or not fill. The protocol does not retry a failed trigger automatically.
+
+Public queries use normal asset units rather than the integer units used for signed calls:
+
+```python
+page = api.v1.account.subaccount_position_tp_sl(
+    address=subaccount,
+    symbol="ETH-USDC",
+    position_id=position_id,
+    limit=20,
+)
+updates = api.v1.account.subaccount_position_tp_sl_history(
+    address=subaccount,
+    symbol="ETH-USDC",
+    position_id=position_id,
+    setting_id=setting_id,
+)
+```
+
+Pass `nextCursor` unchanged to read older pages. Records can lag chain state. Position REST and WebSocket messages provide `tpSlSettingsUrl` when the position identity is available. Refresh settings after a confirmed SDK update or a position message. The query also includes terminal settings. Historical `LAST` sources remain readable, but new settings reject `Last`.
+
+These query methods require a backend deployment that includes the public TP/SL routes. They do not call private endpoints.
 
 ## EVM bridge (Bool Network)
 

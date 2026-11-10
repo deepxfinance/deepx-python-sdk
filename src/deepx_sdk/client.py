@@ -106,6 +106,8 @@ from ._rpc_transport import (
     use_evm_rpc_config,
     use_substrate_ws_config,
 )
+from ._position_tp_sl import TpSlAction, tp_sl_params
+from ._native import submit_pallet_call
 from ._tx_config import merge_tx_config_kwargs
 from ._types import (
     ActiveOrderInfo,
@@ -1272,6 +1274,43 @@ class PerpMarketClient(_EvmTransportClientMixin):
                 timeout_ms=timeout_ms,
             ),
         )
+
+    def update_tp_sl(
+        self,
+        *,
+        actions: list[TpSlAction],
+        market_id: int | None = None,
+        symbol: str | None = None,
+        subaccount: str | None = None,
+        nonce_ms: int | None = None,
+        wait_for_finalized: bool | None = None,
+        timeout_ms: int | None = None,
+    ) -> TxResult:
+        """Atomically create, update, or cancel settings for an existing position.
+
+        Requires a runtime with update_tp_sl. Submission does not close the position.
+        Prices use 1e6 and quantities use base-asset smallest units.
+        """
+        params = tp_sl_params(
+            subaccount or self._client.subaccount,
+            self._client._resolve_perp_market_id(market_id=market_id, symbol=symbol),
+            actions,
+        )
+        result = submit_pallet_call(
+            substrate_ws=self._client.substrate_ws,
+            private_key=self._client.private_key,
+            evm_rpc_url=self._client.evm_rpc_url,
+            call_module="PerpMarket",
+            call_function="update_tp_sl",
+            call_params=params,
+            nonce_ms=nonce_ms,
+            use_timestamp_nonce=True,
+            wait_for_finalized=self._client.wait_for_finalized
+            if wait_for_finalized is None
+            else wait_for_finalized,
+            timeout_ms=timeout_ms,
+        )
+        return TxResult(tx_hash=result.tx_hash)
 
     def set_profit_and_loss_point(
         self,

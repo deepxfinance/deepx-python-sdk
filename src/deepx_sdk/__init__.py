@@ -53,6 +53,7 @@ from ._types import (
     TxConfig,
     TxResult,
 )
+from ._position_tp_sl import TpSlAction, TpSlConfig
 from .api import ApiClient, AsyncApiClient
 from .async_client import AsyncChainClient
 from ._async_recovery import RecoveryConfig
@@ -98,6 +99,8 @@ from .units import from_base_unit, from_quote_unit, to_base_unit, to_quote_unit
 from .ws_client import WsClient, WsMessage, parse_ws_message
 
 __all__ = [
+    "TpSlAction",
+    "TpSlConfig",
     "__version__",
     "APIError",
     "ActiveOrderInfo",

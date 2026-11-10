@@ -18,6 +18,7 @@ from ._network import (
     resolve_substrate_ws_endpoints,
 )
 from ._pending_tx import PendingTransaction, TxStatus, TxTimeouts
+from ._position_tp_sl import TpSlAction, tp_sl_params
 from ._perp_market import (
     _parse_int_field as _parse_perp_int_field,
     _perp_place_params,
@@ -179,6 +180,31 @@ class AsyncPerpMarketClient:
             expected_event=expected_event,
             result_decoder=decode,
             priority=fast_cancel,
+        )
+
+    async def update_tp_sl(
+        self,
+        *,
+        market_id: int,
+        actions: list[TpSlAction],
+        nonce_ms: int | None = None,
+    ) -> PendingTransaction[TxResult]:
+        """Submit an atomic settings update; this does not submit closing orders."""
+        params = tp_sl_params(self._client.subaccount, market_id, actions)
+
+        def decode(
+            fields: Mapping[str, Any], pending: PendingTransaction[TxResult]
+        ) -> TxResult:
+            return TxResult(tx_hash=pending.tx_hash)
+
+        return await self._client._submit(
+            call_module="PerpMarket",
+            call_function="update_tp_sl",
+            call_params=params,
+            nonce_ms=nonce_ms,
+            cloid=None,
+            expected_event=ExpectedEvent("System", "ExtrinsicSuccess"),
+            result_decoder=decode,
         )
 
     async def place_order_and_wait(self, **kwargs: Any) -> PlaceOrderResult:

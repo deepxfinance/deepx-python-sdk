@@ -299,6 +299,68 @@ class WsV1Client:
 class AccountV1Client:
     _client: ApiClient
 
+    def subaccount_position_tp_sl(
+        self,
+        *,
+        address: str,
+        symbol: str,
+        position_id: int | str,
+        cursor: str | None = None,
+        limit: int | None = None,
+    ) -> Any:
+        """Read the latest indexed record for each setting, including terminal settings."""
+        return self._position_tp_sl_query(
+            address, symbol, position_id, None, cursor, limit
+        )
+
+    def subaccount_position_tp_sl_history(
+        self,
+        *,
+        address: str,
+        symbol: str,
+        position_id: int | str,
+        setting_id: int | str,
+        cursor: str | None = None,
+        limit: int | None = None,
+    ) -> Any:
+        """Read recorded setting updates, newest first. Amounts use asset units."""
+        if setting_id is None:
+            raise ValueError("setting_id is required for history")
+        return self._position_tp_sl_query(
+            address, symbol, position_id, setting_id, cursor, limit
+        )
+
+    def _position_tp_sl_query(
+        self, address, symbol, position_id, setting_id, cursor, limit
+    ):
+        def identity(value):
+            if isinstance(value, bool) or not isinstance(value, (int, str)):
+                raise ValueError("TP/SL IDs must be positive uint64 values")
+            if isinstance(value, str) and (
+                not value.isascii() or not value.isdecimal()
+            ):
+                raise ValueError("TP/SL IDs must be positive uint64 values")
+            number = int(value)
+            if not 0 < number < 2**64:
+                raise ValueError("TP/SL IDs must be positive uint64 values")
+            return str(number)
+
+        address = normalize_address(address)
+        _require_value("symbol", symbol)
+        _validate_cursor(cursor)
+        if limit is not None and (type(limit) is not int or not 1 <= limit <= 100):
+            raise ValueError("limit must be an integer between 1 and 100")
+        path = f"/v1/account/subaccounts/{address}/perp/positions/{identity(position_id)}/tp-sl"
+        if setting_id is not None:
+            path += f"/{identity(setting_id)}/history"
+        return self._client.request(
+            "GET",
+            path,
+            params=_clean_params(
+                {"symbol": symbol.upper(), "cursor": cursor, "limit": limit}
+            ),
+        )
+
     def wallet_subaccounts(self, *, address: str) -> Any:
         _require_value("address", address)
         return self._client.request(
