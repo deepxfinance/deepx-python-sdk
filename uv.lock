@@ -596,7 +596,7 @@ wheels = [
 
 [[package]]
 name = "deepx-python-sdk"
-version = "0.2.8"
+version = "0.2.8.post1"
 source = { editable = "." }
 dependencies = [
     { name = "coincurve", version = "20.0.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.14'" },

@@ -4,9 +4,9 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "deepx-python-sdk"
-version = "0.2.8"
-description = "Python SDK for the DeepX exchange chain — direct substrate extrinsics, async transaction engine, and REST API client"
-readme = "README.md"
+version = "0.2.8.post1"
+description = "The DeepX Python SDK provides access to DeepX."
+readme = { text = "The [DeepX Python SDK](https://github.com/deepxfinance/deepx-python-sdk) provides access to DeepX.", content-type = "text/markdown" }
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [
