@@ -36,8 +36,8 @@ def _build_networks() -> dict[str, NetworkConfig]:
     return {
         "testnet": NetworkConfig(
             net="testnet",
-            api_base_url="https://rest-api-testnet.deepx.fi",
-            ws_base_url="wss://ws-api-testnet.deepx.fi",
+            api_base_url="https://api-testnet.deepx.fi",
+            ws_base_url="wss://ws-testnet.deepx.fi",
             substrate_ws="wss://rpc-testnet.deepx.fi",
             evm_rpc_url="https://rpc-testnet.deepx.fi",
             chain_id=4856,

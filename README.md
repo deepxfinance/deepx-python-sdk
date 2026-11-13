@@ -1221,7 +1221,7 @@ asyncio.run(main())
 To receive portfolio transfer limits:
 
 ```python
-async with await WsClient(base_url="https://ws-api-testnet.deepx.fi").connect() as ws:
+async with await WsClient(base_url="wss://ws-testnet.deepx.fi").connect() as ws:
     await ws.subscribe(
         "portfolio-1",
         channel="account@portfolio",

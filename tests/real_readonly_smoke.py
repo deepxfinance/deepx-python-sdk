@@ -12,7 +12,7 @@ from typing import Any, Callable
 import deepx_sdk as dx
 
 
-BASE_URL = os.environ.get("DEEPX_REST_URL", "https://rest-api-testnet.deepx.fi")
+BASE_URL = os.environ.get("DEEPX_REST_URL", "https://api-testnet.deepx.fi")
 EVM_RPC_URL = os.environ.get("DEEPX_EVM_RPC_URL", "https://rpc-testnet.deepx.fi")
 SUBSTRATE_WS = os.environ.get("DEEPX_SUBSTRATE_WS", "wss://rpc-testnet.deepx.fi")
 REPORT = Path("/tmp/deepx_readonly_smoke_report.json")

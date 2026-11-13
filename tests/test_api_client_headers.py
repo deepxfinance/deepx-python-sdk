@@ -60,7 +60,7 @@ def test_api_client_uses_non_urllib_default_user_agent(monkeypatch) -> None:
 
     monkeypatch.setattr(api_mod.urllib.request, "urlopen", fake_urlopen)
 
-    client = dx.ApiClient(base_url="https://rest-api-testnet.deepx.fi", timeout=12)
+    client = dx.ApiClient(base_url="https://api-testnet.deepx.fi", timeout=12)
     res = client.request("GET", "/health")
 
     assert res == {"ok": True}
@@ -82,12 +82,12 @@ def test_async_api_client_uses_v1_methods(monkeypatch) -> None:
     monkeypatch.setattr(api_mod.urllib.request, "urlopen", fake_urlopen)
 
     async def run() -> object:
-        client = dx.AsyncApiClient(base_url="https://rest-api-testnet.deepx.fi", timeout=9)
+        client = dx.AsyncApiClient(base_url="https://api-testnet.deepx.fi", timeout=9)
         return await client.v1.ping()
 
     assert asyncio.run(run()) == {"ok": True}
     assert captured["timeout"] == 9
-    assert captured["req"].full_url == "https://rest-api-testnet.deepx.fi/v1/ping"
+    assert captured["req"].full_url == "https://api-testnet.deepx.fi/v1/ping"
 
 
 @pytest.mark.parametrize("async_client", [False, True])
@@ -152,7 +152,7 @@ def test_api_client_allows_user_agent_override(monkeypatch) -> None:
 
     monkeypatch.setattr(api_mod.urllib.request, "urlopen", fake_urlopen)
 
-    client = dx.ApiClient(base_url="https://rest-api-testnet.deepx.fi")
+    client = dx.ApiClient(base_url="https://api-testnet.deepx.fi")
     _ = client.request(
         "GET",
         "/health",
@@ -178,7 +178,7 @@ def test_api_client_http_error_raises_rest_error(monkeypatch) -> None:
 
     monkeypatch.setattr(api_mod.urllib.request, "urlopen", fake_urlopen)
 
-    client = dx.ApiClient(base_url="https://rest-api-testnet.deepx.fi")
+    client = dx.ApiClient(base_url="https://api-testnet.deepx.fi")
     with pytest.raises(dx.RESTError) as exc_info:
         client.request("GET", "/v1/perp/markets/NOPE-USDC")
 
@@ -204,7 +204,7 @@ def test_api_client_http_error_registered_code_raises_api_error(monkeypatch) -> 
 
     monkeypatch.setattr(api_mod.urllib.request, "urlopen", fake_urlopen)
 
-    client = dx.ApiClient(base_url="https://rest-api-testnet.deepx.fi")
+    client = dx.ApiClient(base_url="https://api-testnet.deepx.fi")
     with pytest.raises(dx.APIError) as exc_info:
         client.request("GET", "/v1/account/subaccounts/0xX/perp/orders/999")
 
@@ -228,7 +228,7 @@ def test_api_client_http_error_with_plain_body_raises_rest_error(monkeypatch) ->
 
     monkeypatch.setattr(api_mod.urllib.request, "urlopen", fake_urlopen)
 
-    client = dx.ApiClient(base_url="https://rest-api-testnet.deepx.fi")
+    client = dx.ApiClient(base_url="https://api-testnet.deepx.fi")
     with pytest.raises(dx.RESTError) as exc_info:
         client.request("GET", "/v1/perp/markets")
 
@@ -245,7 +245,7 @@ def test_api_client_transport_error_raises_rpc_error(monkeypatch) -> None:
 
     monkeypatch.setattr(api_mod.urllib.request, "urlopen", fake_urlopen)
 
-    client = dx.ApiClient(base_url="https://rest-api-testnet.deepx.fi")
+    client = dx.ApiClient(base_url="https://api-testnet.deepx.fi")
     with pytest.raises(dx.RPCError, match="REST request failed"):
         client.request("GET", "/v1/perp/markets")
 
@@ -296,6 +296,11 @@ def test_api_client_default_net_and_base_url() -> None:
     assert client.ws_base_url == expected.ws_base_url
     assert client.evm_rpc_url == expected.evm_rpc_url
     assert client.substrate_ws == expected.substrate_ws
+    assert expected.api_base_url == "https://api-testnet.deepx.fi"
+    assert expected.ws_base_url == "wss://ws-testnet.deepx.fi"
+    assert client.v1.ws.websocket_url() == "wss://ws-testnet.deepx.fi/v1/ws"
+    assert expected.substrate_ws == "wss://rpc-testnet.deepx.fi"
+    assert expected.evm_rpc_url == "https://rpc-testnet.deepx.fi"
     assert not hasattr(client, "internal_v1")
     assert not hasattr(client, "v2")
     assert not hasattr(client, "v3")
