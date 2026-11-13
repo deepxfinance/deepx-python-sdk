@@ -13,7 +13,7 @@ Clients:
 - `SDK` as a thin wrapper holding both clients.
 
 The public testnet now uses the MVCC runtime (chain ID 4856). Current source
-version `0.2.7` includes MVCC compatibility, updated REST queries, and explicit
+version `0.2.8` includes MVCC compatibility, updated REST queries, and explicit
 STP-off order encoding. See the [MVCC testing and rollout guide](docs/mvcc-rollout.md)
 for deployment and validation history.
 
