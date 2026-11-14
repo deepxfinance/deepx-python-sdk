@@ -1,9 +1,6 @@
 # deepx-python-sdk (Python)
 
-Python SDK that encodes ABI calls in Python and signs/submits transactions via Substrate `ethereum.transact`. Private-key operations use libsecp256k1 through the required `coincurve` dependency, with no pure-Python signing fallback.
-
-See the [dependency security notes](docs/dependency-security.md) for native build
-requirements, including Python 3.14 installation instructions.
+Python SDK for market data, account queries, and trading transactions.
 
 Clients:
 
@@ -11,11 +8,6 @@ Clients:
 - `ChainClient` — synchronous on-chain client for scripts, onboarding, and low-frequency operations.
 - `ApiClient` — REST client for market data and the operations the chain clients don't cover.
 - `SDK` as a thin wrapper holding both clients.
-
-The public testnet now uses the MVCC runtime (chain ID 4856). Current source
-version `0.2.8.post1` includes MVCC compatibility, updated REST queries, and explicit
-STP-off order encoding. See the [MVCC testing and rollout guide](docs/mvcc-rollout.md)
-for deployment and validation history.
 
 ## Install
 
@@ -27,10 +19,7 @@ cd deepx-python-sdk
 pip install -e ".[dev]"
 ```
 
-Development changes land on the `devnet` Git branch for internal deployment
-validation, then merge into `main` for the public testnet. Public SDK network
-options remain `testnet` and `mainnet`; internal deployments use explicit
-`base_url`, `ws_base_url`, `substrate_ws`, and `evm_rpc_url` overrides.
+The public network options are `testnet` and `mainnet`. For custom deployments, set `base_url`, `ws_base_url`, `substrate_ws`, and `evm_rpc_url` explicitly.
 
 Alternatively, if you use [uv](https://github.com/astral-sh/uv), run the following to install all extras in a virtual environment:
 
@@ -108,8 +97,6 @@ chain = dx.ChainClient(
 api = dx.ApiClient()
 sdk = dx.SDK(chain=chain, api=api)
 ```
-
-> **First time?** The SDK does not create wallets. See [Onboarding](#onboarding) below for the full first-time setup (private key → subaccount → deposit → trade).
 
 Both clients connect to the DeepX network by default — endpoints are auto-resolved, nothing else to configure. Precompile addresses likewise have built-in defaults (see [Precompile defaults](#precompile-defaults)); you only pass them when targeting a custom deployment. Custom RPC endpoints (e.g. a self-hosted node or proxy) can be supplied via `evm_rpc_url` / `substrate_ws` or the ordered `*_endpoints` failover lists below.
 
@@ -218,7 +205,7 @@ await ticket.finalized()
 
 The ticket is a `PendingTransaction`, so existing code remains compatible. `state` is the concise business state; `status` preserves the exact underlying transaction status. `executed()` returns the typed business result, while `finalized()` waits for chain finality.
 
-The current chain runtime targets a 70 ms block slot. `place_order()` and `cancel_order()` do not wait for that slot: they return the ticket when the node reports that the transaction is accepted into its pool. `executed()` waits for successful execution in a block, so its latency includes pool wait, the remaining part of the current or next 70 ms slot, block processing, and network delivery. The 70 ms value is a scheduling target, not an SDK latency guarantee.
+`place_order()` and `cancel_order()` return a ticket after node acceptance. `executed()` waits for execution in a block. Network and block processing affect the wait time.
 
 Runnable example: [`examples/async_orders.py`](examples/async_orders.py).
 
@@ -246,7 +233,6 @@ import os
 
 import deepx_sdk as dx
 
-
 async def on_transaction(event: dx.TransactionEvent) -> None:
     # Called for every transaction owned by this client.
     # Forward this event to metrics, alerts, or your strategy state machine.
@@ -256,7 +242,6 @@ async def on_transaction(event: dx.TransactionEvent) -> None:
         dx.ExecutionState.ACTION_REQUIRED,
     }:
         print("transaction alert:", event.to_dict())
-
 
 async def main() -> None:
     async with dx.AsyncChainClient(
@@ -284,7 +269,6 @@ async def main() -> None:
 
         finalized_result = await ticket.finalized()
         print("finalized:", finalized_result)
-
 
 asyncio.run(main())
 ```
@@ -412,7 +396,7 @@ The async client also protects urgent market-maker actions from ordinary quote t
 - Normal submissions use `max_pool_transactions_per_account`, which defaults to 48.
 - `priority_pool_reserve` defaults to 2, so fast cancels and explicit replacements can use up to 50 pool positions with the default configuration.
 - A cancel submitted with `fast_cancel=True`, or an explicit `await ticket.replace()` no-op, may use the configured priority reserve.
-- Urgent encoding overtakes normal encoding jobs that have not started. Encoding already in progress is allowed to finish, because the cached Substrate runtime encoder must remain serialized.
+- Urgent jobs run before queued normal jobs. They do not interrupt a job already in progress.
 
 This SDK-side priority complements the chain transaction priority; it does not guarantee inclusion in the current block. The SDK validates that the normal limit plus the priority reserve does not exceed the configured node limit:
 
@@ -478,10 +462,10 @@ backend's 503 error; the SDK does not substitute zero values. Statistics accept
 no query parameters. `AsyncApiClient` uses the same methods with `await`.
 
 History endpoints that support pagination accept a **string** `cursor`: pass the
-previous response's `nextCursor` unchanged. Integer cursors and removed `from_id`
+previous response's `nextCursor` unchanged. Integer cursors and `from_id`
 parameters raise `ValueError`. Order/trade history, position history, and OI
 history reject `sort`; funding-payment history also rejects `cursor`. Borrowing
-status history uses `interval` and a maximum `limit` of 500; its removed
+status history uses `interval` and a maximum `limit` of 500; its unsupported
 `time_frame`, `market_id`, and `sort` arguments raise `ValueError`.
 
 `subaccount_liquidations(liquidation_type=...)` sends the backend's `liqType`
@@ -490,18 +474,13 @@ To reconcile an existing REST transaction without resubmitting, use
 `api.v1.chain_tx.status(tx_hash=...)`. This reports the backend's outcome; an
 HTTP success or pending confirmation alone is not proof of order execution.
 
-
 `api.v1.ws.websocket_url()` returns the v1 WebSocket endpoint URL. For request payload construction, `deepx_sdk.ws_client` also exposes `v1_subscribe(...)`, `v1_unsubscribe(...)`, `v1_list(...)`, and `v1_post(...)`.
 
 ### Standalone order signing
 
 Use the public signing functions when your application owns REST/WS submission and transaction tracking. They do not require `ChainClient` or `ApiClient`:
 
-Spot and perpetual orders on both devnet and testnet explicitly disable STP.
-The SDK encodes `Some(StpMode::None)` as `stp_mode="None"` internally, including
-the placement inside atomic order modifications. Python `None` would select
-the chain default, currently `ExpireMaker`, and would enable STP. There is no
-public STP argument or trade-group API.
+SDK spot and perpetual orders disable self-trade prevention (STP), including atomic order modifications. The SDK exposes no STP argument or trade-group API.
 
 ```python
 import os
@@ -539,7 +518,7 @@ The immutable `SignedExtrinsic` result contains `signed_extrinsic` (hex), `tx_ha
 
 Perp supports `limit`, `market`, `ioc`, and `stop`; spot supports `limit`, `market`, and `ioc`. Integer aliases are `limit=0`, `market=1`, `stop=2`, and `ioc=3`. Perp market orders use `price=0` (or omit it); other perp types require `price`. Spot amounts use each token's base units and `side` is `buy`/`sell` (or a boolean). Slippage is in basis points. `post_only` is only allowed on limit orders. Cancellation IDs are u64. These functions do not accept the obsolete `cloid` field; use the returned nonce and transaction hash for correlation.
 
-Each call reads current metadata and chain time, then uses the same frozen metadata encoder as the transaction-ticket path. The connection is closed after loading; encoding or signing errors propagate to the caller. This is synchronous I/O; async applications can use `await asyncio.to_thread(build_signed_perp_order, ...)`.
+These signing functions use synchronous I/O. In an async application, call them through `await asyncio.to_thread(build_signed_perp_order, ...)`.
 
 Automatic timestamp nonces are coordinated across these standalone functions for each chain and signer within one Python process. Explicit `nonce_ms` must be within the chain's one-hour window. Explicit values, separate processes, and other SDK clients do not share this coordination: applications using them together must allocate unique nonces themselves. Do not reuse or rebuild an ambiguously submitted order without reconciling its outcome. Runtime metadata handles binary layout, but business-parameter changes can still require a new SDK version; an upgrade between signing and submission can invalidate a signed transaction.
 
@@ -582,8 +561,6 @@ Quantities use the asset's own unit, not USD or scaled chain integers. The SDK p
 
 `portfolio["availableMargin"]` is available margin in USDC; `transferLimits` describes asset transfers and must not be used as opening-position margin. `assets` filters requested expansions, not account-wide risk calculations; supply `include` when filtering portfolio assets. REST uses comma-separated filters and WS uses arrays.
 
-Migration: the backend removed `/withdrawal-limits/{asset}` in favor of `/transfer-limits/{asset}`. Replace `subaccount_withdrawal_limit()` with `subaccount_transfer_limit()`, `maxWithdrawableQty` with `maxTransferableQty`, and `withdrawalLimits` with `transferLimits` in REST/WS portfolio requests and response handling. The old SDK method raises a migration error without sending a request; the old `include` name is rejected locally.
-
 ## On-chain usage
 
 ### Precompile defaults
@@ -610,7 +587,7 @@ You can override the precompile address per call via `precompile_address`.
 Notes:
 
 - `pair` is a bytes32 hex string (64 hex chars, with or without `0x`).
-- Runtime compatibility (new node): `MarketSpec.min_order_size` was renamed to `min_qty` on-chain. SDK keeps `min_order_size` and also exposes `min_qty` aliases in Python objects.
+- Market views expose `min_order_size` and its `min_qty` alias.
 - Optional per-tx overrides on timestamp-nonce tx paths (`chain.perp_market.place_*` / `cancel_order`, `chain.spot_market.*`, `chain.subaccount_client.no_op`): `chain_id`, `gas_limit`, `max_fee_per_gas`, `max_priority_fee_per_gas`, `use_legacy`, `nonce_ms`, `wait_for_finalized`, `timeout_ms`. DeepX charges no gas (the EVM base fee is 0), so the fee fields default to `0` and are inert; `gas_limit` is still a required EVM transaction field — if RPC gas estimation fails for a precompile call, the SDK signs with `gas_limit=500000`; pass `gas_limit` to override.
 - Optional per-tx overrides on transaction-count nonce tx paths (`chain.subaccount_client.*`, `chain.lending.*`, `chain.perp_market.set_profit_and_loss_point` / `close_position_limit` / `close_position` / `close_position_market` / `settle_pnl`): `chain_id`, `gas_limit`, `max_fee_per_gas`, `max_priority_fee_per_gas`, `use_legacy`, `nonce`, `wait_for_finalized`, `timeout_ms`.
 
@@ -668,7 +645,7 @@ Each subaccount may hold at most `max_active_orders` open orders **per market** 
 
 A runnable version is in [`examples/leverage.py`](examples/leverage.py).
 
-On testnet runtime 371 and later runtimes retaining this permission, a valid delegate with trading permission may set or clear a **single-market** leverage override. Sign with the delegate key and pass the owner's target subaccount; do not substitute the delegate's address for the subaccount:
+A valid delegate with trading permission can set or clear a **single-market** leverage override. Sign with the delegate key and pass the owner's target subaccount; do not substitute the delegate's address for the subaccount:
 
 ```python
 delegate_chain = dx.ChainClient(private_key="0xDELEGATE_PRIVATE_KEY")
@@ -684,7 +661,7 @@ Orders can also be placed through the REST API — it builds a signed extrinsic 
 
 The high-level `chain.perp_market.place_order(..., order_type="ioc")` dispatcher also routes to `place_perp_order_ioc`. Accepted aliases: `"ioc"`, `"I"`, `"IOC"`, `3`.
 
-On the current testnet runtime, perp order IDs are `u64` values derived from the transaction's timestamp nonce. The `nonce_ms` argument lets callers choose that timestamp explicitly (within the chain's accepted window), which is useful when correlating an order with a submitted transaction. The legacy `cloid` argument is still accepted by SDK method signatures for source compatibility, but it is not serialized and does not become the on-chain order ID.
+On the current testnet runtime, perp order IDs are `u64` values derived from the transaction's timestamp nonce. The `nonce_ms` argument lets callers choose that timestamp explicitly (within the chain's accepted window), which is useful when correlating an order with a submitted transaction. The SDK accepts `cloid` but ignores it. It does not set the on-chain order ID.
 
 ```python
 res = chain.perp_market.place_perp_order_ioc(market_id=3, is_long=True, size=123,
@@ -790,7 +767,7 @@ print(res.order_id, res.tx_hash)
 
 The high-level `chain.spot_market.place_order(..., order_type="ioc")` dispatcher also routes to `subaccount_place_order_{buy,sell}_ioc_b`. Accepted aliases: `"ioc"`, `"I"`, `"IOC"`, `3`.
 
-Spot order IDs follow the same timestamp-nonce `u64` rule. The legacy `cloid` argument remains accepted for source compatibility but is not sent to the chain. Set `nonce_ms` when a deterministic order ID is needed. Note `auto_cancel` no longer exists on-chain; the kwarg is kept for compatibility but ignored.
+Spot order IDs follow the same timestamp-nonce `u64` rule. The SDK accepts `cloid` but ignores it. Set `nonce_ms` when a deterministic order ID is needed. The SDK also accepts `auto_cancel` but ignores it.
 
 ```python
 res = chain.spot_market.subaccount_cancel_order_buy_b(
@@ -828,7 +805,7 @@ liq = chain.perp_market.get_liquidate_price(account="0xYOUR_SUBACCOUNT", market_
 oracle = chain.perp_market.get_oracle_price_all()
 ```
 
-On MVCC runtimes, filled/cancelled orders are removed from current chain storage.
+Filled and canceled orders are removed from current chain storage.
 `order_info()` may therefore return an order-not-found error after successful
 execution. Use transaction events or the matching network's indexer/API for
 historical results. A missing order is not proof of a failed transaction and is
@@ -936,16 +913,11 @@ A runnable version is in [`examples/delegate.py`](examples/delegate.py).
 
 `chain.market.get_perp_price_bounds(market_id=...)` also returns `min_order_size` with alias `min_qty`, and optional `min_notional`.
 
-`chain.subaccount_client.subaccount_info(address=...)` supports the latest `AccountInfo` layout, the delegates-vec layout, and the current external legacy `User` layout.
-
-- Always available: `authority`, `delegate`, `name`, `spot_positions`, `borrow_positions`, `next_order_id`, `status`, `is_margin_trading_enabled`.
-- Delegates-vec layout: `delegates` is a list of `DelegateInfo(delegate_address, delegate_name, valid_until)`; `delegate` is empty there (and on the legacy layout `delegates` is `None`).
-- Latest `AccountInfo` fields (legacy `User` returns `None`): `address`, `liquidation_start_at`, `next_liquidation_id`, `margin_strategy`.
-- On latest `AccountInfo`, `borrow_positions` is returned as an empty list because that layout does not include lending borrow details.
+`chain.subaccount_client.subaccount_info(address=...)` returns account ownership, delegates, positions, order IDs, status, and margin-trading permissions. Optional fields can be `None` when the chain does not provide them. Use lending queries for borrow details.
 
 ### Lending calls
 
-`chain.lending.max_transfer_amount_for(...)` queries the Lending precompile's `maxTransferAmountFor(address,uint8,bytes,bool)` (available on testnet runtime 370+, verified on runtime 371). It returns a Python integer in the asset's **base units**, unlike REST transfer-limit decimal strings:
+`chain.lending.max_transfer_amount_for(...)` returns a Python integer in the asset's **base units**. REST transfer limits use decimal strings:
 
 ```python
 from decimal import Decimal
@@ -1010,17 +982,12 @@ info = chain.system.system_account(address="0xYOUR_ADDRESS")
 print(info.quota, info.is_exist)
 ```
 
-Note:
-
-- The SDK is pure Python. No native build step is required.
-
 ### Quota: query & claim
 
 Every order/cancel costs 1 quota; trading volume earns claimable quota. Claiming is **backend-executed**: users can't add quota on-chain themselves (chain `add_quota` is restricted to authorized accounts) — the SDK signs a fixed message and the backend submits the chain tx asynchronously.
 
 ```python
 q = api.v1.account.wallet_quota(address="0xYOUR_WALLET")     # {claimable, remaining}
-s = api.v1.account.quota_summary(wallet="0xYOUR_WALLET")     # earned/granted/pending + volumes (internal API)
 
 # personal-signs with the client's private_key (or pass private_key=/wallet=)
 res = api.v1.account.claim_quota(wallet="0xYOUR_WALLET")     # POST /v1/account/wallets/{address}/quota/claims
@@ -1183,14 +1150,12 @@ Basic subscribe example:
 import asyncio
 from deepx_sdk.ws_client import WsClient, v1_sub_perp_ticker
 
-
 async def main() -> None:
     client = WsClient(base_url="http://127.0.0.1:8080")
     async with await client.connect() as ws:
         await ws.send_json(v1_sub_perp_ticker("ticker-1", symbol="ETH-USDC"))
         msg = await ws.recv_json()
         print("ws message:", msg)
-
 
 asyncio.run(main())
 ```
@@ -1200,7 +1165,6 @@ Account channel example:
 ```python
 import asyncio
 from deepx_sdk.ws_client import WsClient, v1_sub_account_perp_orders
-
 
 async def main() -> None:
     client = WsClient(base_url="http://127.0.0.1:8080")
@@ -1213,7 +1177,6 @@ async def main() -> None:
             )
         )
         print(await ws.recv_json())
-
 
 asyncio.run(main())
 ```
