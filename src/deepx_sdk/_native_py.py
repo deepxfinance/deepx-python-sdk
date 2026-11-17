@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from typing import Any, Optional
 
 from ._rpc_transport import (
+    _safe_http_endpoint,
     rpc_request_endpoints,
     rpc_request_options,
     substrate_ws_request_endpoints,
@@ -580,7 +581,8 @@ def _rpc_call(evm_rpc_url: str, method: str, params: list[Any]) -> Any:
     endpoints, endpoint_pool = rpc_request_endpoints(evm_rpc_url)
     for index, endpoint in enumerate(endpoints):
         _native_debug(
-            f"rpc_call:start method={method} url={endpoint} timeout={timeout_s}s"
+            f"rpc_call:start method={method} "
+            f"url={_safe_http_endpoint(endpoint)} timeout={timeout_s}s"
         )
         req = urllib.request.Request(
             endpoint,
@@ -599,33 +601,31 @@ def _rpc_call(evm_rpc_url: str, method: str, params: list[Any]) -> Any:
                 f"rpc_call:http_error method={method} "
                 f"{time.monotonic()-t0:.2f}s code={exc.code}"
             )
-            detail = f"HTTP {exc.code} {exc.reason}"
-            raw = ""
-            if exc.fp:
-                try:
-                    raw = exc.read().decode("utf-8", errors="replace")
-                except Exception:
-                    raw = ""
-            raw = raw.replace("\n", " ").strip()
-            if raw:
-                if len(raw) > 240:
-                    raw = raw[:237] + "..."
-                detail = f"{detail} body={raw}"
-            raise RuntimeError(f"{method} request failed: {detail}") from exc
+            exc.close()
+            raise RuntimeError(
+                f"{method} request failed: HTTP {exc.code} "
+                f"at {_safe_http_endpoint(endpoint)}"
+            ) from None
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
             if index + 1 < len(endpoints):
                 continue
             _native_debug(
                 f"rpc_call:url_error method={method} "
-                f"{time.monotonic()-t0:.2f}s {exc}"
+                f"{time.monotonic()-t0:.2f}s {type(exc).__name__}"
             )
-            raise RuntimeError(f"{method} request failed: {exc}") from exc
+            raise RuntimeError(
+                f"{method} request failed at {_safe_http_endpoint(endpoint)}: "
+                f"{type(exc).__name__}"
+            ) from None
         except Exception as exc:
             _native_debug(
                 f"rpc_call:error method={method} "
-                f"{time.monotonic()-t0:.2f}s {type(exc).__name__}: {exc}"
+                f"{time.monotonic()-t0:.2f}s {type(exc).__name__}"
             )
-            raise RuntimeError(f"{method} request failed: {exc}") from exc
+            raise RuntimeError(
+                f"{method} request failed at {_safe_http_endpoint(endpoint)}: "
+                f"{type(exc).__name__}"
+            ) from None
         if endpoint_pool is not None:
             endpoint_pool.mark_success(endpoint)
         break
@@ -722,7 +722,10 @@ def _submit_signed_pallet_call(
         attempts = 3 if nonce_ms is None and not use_timestamp_nonce else 1
         last_error: BaseException | None = None
         for _attempt in range(attempts):
-            _native_debug(f"_submit_signed_pallet_call:connect ws={substrate_ws} timeout_ms={timeout_ms}")
+            _native_debug(
+                "_submit_signed_pallet_call:connect "
+                f"ws={_safe_http_endpoint(substrate_ws)} timeout_ms={timeout_ms}"
+            )
             substrate = _create_substrate(substrate_cls, substrate_ws, timeout_ms=timeout_ms)
             _native_debug("_submit_signed_pallet_call:compose_call:start")
             t0 = time.monotonic()
@@ -1095,8 +1098,7 @@ def _create_substrate(
         timeout_ms if timeout_ms is not None and timeout_ms > 0 else DEFAULT_WS_TIMEOUT_MS
     )
     endpoints, endpoint_pool = substrate_ws_request_endpoints(substrate_ws)
-    last_error: BaseException | None = None
-    connection_errors: list[tuple[str, BaseException]] = []
+    connection_errors: list[tuple[str, Exception]] = []
     substrate: Any = None
     for endpoint in endpoints:
         ws_options: dict[str, Any] = {"timeout": effective_ms / 1000.0}
@@ -1111,27 +1113,22 @@ def _create_substrate(
             except TypeError:
                 # Older substrate-interface builds don't accept ws_options.
                 substrate = substrate_cls(url=endpoint)
-        except BaseException as exc:
-            last_error = exc
+        except Exception as exc:
             connection_errors.append((endpoint, exc))
             continue
         if endpoint_pool is not None:
             endpoint_pool.mark_success(endpoint)
         break
     if substrate is None:
-        if last_error is not None:
-            if endpoint_pool is not None and len(connection_errors) > 1:
-                details = "; ".join(
-                    f"{endpoint_pool.display(endpoint)}: "
-                    f"{type(exc).__name__}: "
-                    f"{str(exc).replace(endpoint, endpoint_pool.display(endpoint))[:160]}"
-                    for endpoint, exc in connection_errors
-                )
-                raise RPCError(
-                    "Unable to connect to any configured Substrate WebSocket "
-                    f"endpoint ({len(connection_errors)} attempted): {details}"
-                ) from last_error
-            raise last_error
+        if connection_errors:
+            details = "; ".join(
+                f"{_safe_http_endpoint(endpoint)}: {type(exc).__name__}"
+                for endpoint, exc in connection_errors
+            )
+            raise RPCError(
+                "Unable to connect to any configured Substrate WebSocket "
+                f"endpoint ({len(connection_errors)} attempted): {details}"
+            ) from None
         raise RuntimeError("Unable to connect to a Substrate WebSocket endpoint.")
     # DeepX AccountNonceApi returns an 8-byte AccountIndex on the dev deployment, while
     # substrate-interface 1.8 decodes account_nonce as U32 in strict mode.

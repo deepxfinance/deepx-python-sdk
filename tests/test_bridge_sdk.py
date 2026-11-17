@@ -11,6 +11,7 @@ import deepx_sdk as dx
 import deepx_sdk.api as api_mod
 import deepx_sdk.bridge as bridge_mod
 from deepx_sdk._network import DEFAULT_NET, network_config
+from _public_test_keys import PUBLIC_TEST_ADDRESS, PUBLIC_TEST_PRIVATE_KEY
 
 
 class _DummyResponse:
@@ -869,8 +870,6 @@ def test_check_transaction_receipt_non_mapping(monkeypatch) -> None:
 
 # === bridge_out_with_sign (one-shot high-level method) ===
 
-_ANVIL_KEY = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
-_ANVIL_ADDR = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
 _TOKEN_ADDR = "0x" + "9e" * 20
 _BRIDGE_ADDR = "0x" + "12" * 20
 
@@ -925,7 +924,7 @@ def _one_shot_api() -> "bridge_mod.BridgeApi":
         rpc_url="https://rpc.example.com",
         chain_id=4845,
         contract_address=_BRIDGE_ADDR,
-        private_key=_ANVIL_KEY,
+        private_key=PUBLIC_TEST_PRIVATE_KEY,
     )
 
 
@@ -943,7 +942,7 @@ def test_bridge_out_with_sign_happy_path_with_approve(monkeypatch) -> None:
     )
 
     # sender derived from the private key
-    assert result["sender"] == _ANVIL_ADDR
+    assert result["sender"] == PUBLIC_TEST_ADDRESS
     assert result["salt"] == "0x" + "01" * 32
     assert result["signature"] == "0xsig"
     # approve was sent, and before bridgeOut
@@ -963,8 +962,8 @@ def test_bridge_out_with_sign_happy_path_with_approve(monkeypatch) -> None:
         "verifying_contract": _BRIDGE_ADDR,
     }
     params = body["params"]
-    assert params["sender"] == _ANVIL_ADDR
-    assert params["refund_address"] == _ANVIL_ADDR
+    assert params["sender"] == PUBLIC_TEST_ADDRESS
+    assert params["refund_address"] == PUBLIC_TEST_ADDRESS
     assert params["dst_recipient"] == "0x" + "ab" * 32
     assert params["salt"] == "0x" + "01" * 32
     assert params["token_id"] == "3"

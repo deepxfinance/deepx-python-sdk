@@ -463,7 +463,7 @@ def test_reader_disconnect_fails_a_request_waiting_to_send_with_context() -> Non
         with pytest.raises(RPCError) as caught:
             await request
         rendered = str(caught.value)
-        assert "ws://node.test/rpc" in rendered
+        assert "ws://node.test" in rendered
         assert "disconnected" in rendered.lower()
         assert not socket.sent
         assert not transport._requests
@@ -799,7 +799,7 @@ def test_send_failure_has_transport_context_and_cleans_pending_future() -> None:
             await transport.request("failed_method", [])
         rendered = str(caught.value)
         assert "failed_method" in rendered
-        assert "ws://node.test/rpc" in rendered
+        assert "ws://node.test" in rendered
         assert "BrokenPipeError" in rendered
         assert "wire-secret" not in rendered
         assert not transport._requests
@@ -1147,7 +1147,7 @@ def test_close_failure_is_wrapped_with_safe_transport_context() -> None:
         with pytest.raises(RPCError) as caught:
             await transport.close()
         rendered = str(caught.value)
-        assert "wss://node.test/rpc" in rendered
+        assert "wss://node.test" in rendered
         assert "OSError" in rendered
         assert "close-secret" not in rendered
         assert transport.state is ConnectionState.CLOSED
@@ -2039,7 +2039,7 @@ def test_malformed_response_disconnects_with_context(
         assert "validated_method" in rendered
         assert "request id 1" in rendered
         assert "protocol error" in rendered
-        assert "ws://node.test/rpc" in rendered
+        assert "ws://node.test" in rendered
         assert transport.state is ConnectionState.DISCONNECTED
         assert socket.close_calls == 1
         await transport.close()

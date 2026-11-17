@@ -7,7 +7,11 @@ import urllib.request
 from typing import Any
 
 from ._native_py import _native_debug
-from ._rpc_transport import rpc_request_endpoints, rpc_request_options
+from ._rpc_transport import (
+    _safe_http_endpoint,
+    rpc_request_endpoints,
+    rpc_request_options,
+)
 
 
 def evm_call(evm_rpc_url: str, to: str, data: bytes) -> bytes:
@@ -27,7 +31,7 @@ def evm_call(evm_rpc_url: str, to: str, data: bytes) -> bytes:
     endpoints, endpoint_pool = rpc_request_endpoints(evm_rpc_url)
     for index, endpoint in enumerate(endpoints):
         _native_debug(
-            f"evm_call:start method=eth_call url={endpoint} "
+            f"evm_call:start method=eth_call url={_safe_http_endpoint(endpoint)} "
             f"timeout={timeout_s}s to={to}"
         )
         req = urllib.request.Request(
@@ -47,33 +51,31 @@ def evm_call(evm_rpc_url: str, to: str, data: bytes) -> bytes:
                 "evm_call:http_error method=eth_call "
                 f"{time.monotonic()-t0:.2f}s code={exc.code}"
             )
-            detail = f"HTTP {exc.code} {exc.reason}"
-            raw = ""
-            if exc.fp:
-                try:
-                    raw = exc.read().decode("utf-8", errors="replace")
-                except Exception:
-                    raw = ""
-            raw = raw.replace("\n", " ").strip()
-            if raw:
-                if len(raw) > 240:
-                    raw = raw[:237] + "..."
-                detail = f"{detail} body={raw}"
-            raise RuntimeError(f"eth_call request failed: {detail}") from exc
+            exc.close()
+            raise RuntimeError(
+                f"eth_call request failed: HTTP {exc.code} "
+                f"at {_safe_http_endpoint(endpoint)}"
+            ) from None
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
             if index + 1 < len(endpoints):
                 continue
             _native_debug(
                 "evm_call:url_error method=eth_call "
-                f"{time.monotonic()-t0:.2f}s {exc}"
+                f"{time.monotonic()-t0:.2f}s {type(exc).__name__}"
             )
-            raise RuntimeError(f"eth_call request failed: {exc}") from exc
+            raise RuntimeError(
+                f"eth_call request failed at {_safe_http_endpoint(endpoint)}: "
+                f"{type(exc).__name__}"
+            ) from None
         except Exception as exc:
             _native_debug(
                 "evm_call:error method=eth_call "
-                f"{time.monotonic()-t0:.2f}s {type(exc).__name__}: {exc}"
+                f"{time.monotonic()-t0:.2f}s {type(exc).__name__}"
             )
-            raise RuntimeError(f"eth_call request failed: {exc}") from exc
+            raise RuntimeError(
+                f"eth_call request failed at {_safe_http_endpoint(endpoint)}: "
+                f"{type(exc).__name__}"
+            ) from None
         if endpoint_pool is not None:
             endpoint_pool.mark_success(endpoint)
         break

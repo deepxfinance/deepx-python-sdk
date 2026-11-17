@@ -11,6 +11,7 @@ from eth_account import Account
 import pytest
 
 from deepx_sdk import ChainError
+from _public_test_keys import PUBLIC_TEST_PRIVATE_KEY
 
 
 def _load_native_py():
@@ -36,7 +37,7 @@ def test_build_signed_tx_python_fallback(monkeypatch) -> None:
     monkeypatch.setattr(_native_py, "_rpc_get_transaction_count", lambda _url, _addr: 7)
     monkeypatch.setattr(_native_py, "_rpc_estimate_gas", lambda _url, _tx: 21000)
 
-    private_key = "0x59c6995e998f97a5a0044966f0945384e95f1f0b1f3491e0f2d4f5b8f96f1e7b"
+    private_key = PUBLIC_TEST_PRIVATE_KEY
     precompile = "0x000000000000000000000000000000000000044E"
 
     signed = _native_py.build_signed_tx(
@@ -75,7 +76,7 @@ def test_build_signed_tx_uses_default_gas_when_estimate_fails(monkeypatch) -> No
 
     signed = _native_py.build_signed_tx(
         evm_rpc_url="http://127.0.0.1:8545",
-        private_key="0x59c6995e998f97a5a0044966f0945384e95f1f0b1f3491e0f2d4f5b8f96f1e7b",
+        private_key=PUBLIC_TEST_PRIVATE_KEY,
         precompile_address="0x000000000000000000000000000000000000044E",
         data_hex="0x18ae37ea",
         chain_id=None,
@@ -103,7 +104,7 @@ def test_build_signed_tx_uses_default_gas_when_estimate_returns_zero(monkeypatch
 
     signed = _native_py.build_signed_tx(
         evm_rpc_url="http://127.0.0.1:8545",
-        private_key="0x59c6995e998f97a5a0044966f0945384e95f1f0b1f3491e0f2d4f5b8f96f1e7b",
+        private_key=PUBLIC_TEST_PRIVATE_KEY,
         precompile_address="0x000000000000000000000000000000000000044E",
         data_hex="0x18ae37ea",
         chain_id=None,
@@ -124,7 +125,7 @@ def test_decode_signed_rlp_to_transaction_v2_variants(monkeypatch) -> None:
     monkeypatch.setattr(_native_py, "_rpc_get_chain_id", lambda _url: 31337)
     monkeypatch.setattr(_native_py, "_rpc_estimate_gas", lambda _url, _tx: 21000)
 
-    private_key = "0x59c6995e998f97a5a0044966f0945384e95f1f0b1f3491e0f2d4f5b8f96f1e7b"
+    private_key = PUBLIC_TEST_PRIVATE_KEY
     precompile = "0x000000000000000000000000000000000000044E"
 
     dynamic_fee = _native_py.build_signed_tx(
@@ -228,7 +229,7 @@ def test_submit_signed_tx_wait_event_python_fallback(monkeypatch) -> None:
 
     signed = _native_py.build_signed_tx(
         evm_rpc_url="http://127.0.0.1:8545",
-        private_key="0x59c6995e998f97a5a0044966f0945384e95f1f0b1f3491e0f2d4f5b8f96f1e7b",
+        private_key=PUBLIC_TEST_PRIVATE_KEY,
         precompile_address="0x000000000000000000000000000000000000044D",
         data_hex="0x1234",
         chain_id=31337,
@@ -328,7 +329,7 @@ def test_submit_signed_tx_wait_event_fallback_to_block_events(monkeypatch) -> No
 
     signed = _native_py.build_signed_tx(
         evm_rpc_url="http://127.0.0.1:8545",
-        private_key="0x59c6995e998f97a5a0044966f0945384e95f1f0b1f3491e0f2d4f5b8f96f1e7b",
+        private_key=PUBLIC_TEST_PRIVATE_KEY,
         precompile_address="0x000000000000000000000000000000000000044D",
         data_hex="0x1234",
         chain_id=31337,
@@ -417,7 +418,7 @@ def test_submit_signed_tx_wait_event_does_not_match_unscoped_block_events(
 
     signed = _native_py.build_signed_tx(
         evm_rpc_url="http://127.0.0.1:8545",
-        private_key="0x59c6995e998f97a5a0044966f0945384e95f1f0b1f3491e0f2d4f5b8f96f1e7b",
+        private_key=PUBLIC_TEST_PRIVATE_KEY,
         precompile_address="0x000000000000000000000000000000000000044D",
         data_hex="0x1234",
         chain_id=31337,

@@ -17,7 +17,7 @@ from ._network import (
     resolve_net,
     resolve_ordered_endpoints,
 )
-from ._rpc_transport import DEFAULT_USER_AGENT, RpcEndpointPool
+from ._rpc_transport import DEFAULT_USER_AGENT, RpcEndpointPool, _safe_http_endpoint
 
 if TYPE_CHECKING:
     from .api_v1 import V1Client
@@ -32,14 +32,14 @@ def _normalize_optional_str(value: Optional[str]) -> Optional[str]:
 
 @dataclass
 class ApiClient:
-    base_url: Optional[str] = None
+    base_url: Optional[str] = field(default=None, repr=False)
     net: Optional[str] = None
     timeout: int = 30
     user_agent: str = DEFAULT_USER_AGENT
-    ws_base_url: Optional[str] = None
-    substrate_ws: Optional[str] = None
-    evm_rpc_url: Optional[str] = None
-    private_key: Optional[str] = None
+    ws_base_url: Optional[str] = field(default=None, repr=False)
+    substrate_ws: Optional[str] = field(default=None, repr=False)
+    evm_rpc_url: Optional[str] = field(default=None, repr=False)
+    private_key: Optional[str] = field(default=None, repr=False)
     perp_precompile_address: Optional[str] = None
     spot_precompile_address: Optional[str] = None
     lending_precompile_address: Optional[str] = None
@@ -53,10 +53,10 @@ class ApiClient:
     use_legacy: bool = False
     nonce_ms: Optional[int] = None
     evm_rpc_user_agent: str = DEFAULT_USER_AGENT
-    evm_rpc_headers: Optional[dict[str, str]] = None
+    evm_rpc_headers: Optional[dict[str, str]] = field(default=None, repr=False)
     evm_rpc_timeout: Optional[float] = None
-    base_urls: Sequence[str] | None = None
-    evm_rpc_endpoints: Sequence[str] | None = None
+    base_urls: Sequence[str] | None = field(default=None, repr=False)
+    evm_rpc_endpoints: Sequence[str] | None = field(default=None, repr=False)
     v1: "V1Client" = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -198,18 +198,18 @@ class ApiClient:
                         if error_type:
                             err.error_type = error_type
                         err.details = details
-                        raise err from exc
+                        raise err from None
                     raise RESTError(
                         status_code=exc.code,
                         message=message,
                         code=code,
                         error_type=error_type,
                         details=details,
-                    ) from exc
+                    ) from None
                 raise RESTError(
                     status_code=exc.code,
                     message=raw or str(exc.reason),
-                ) from exc
+                ) from None
             except (
                 TimeoutError,
                 socket.timeout,
@@ -219,8 +219,9 @@ class ApiClient:
                 if retryable and index + 1 < len(endpoints):
                     continue
                 raise RPCError(
-                    f"REST request failed: {method_upper} {url}: {exc}"
-                ) from exc
+                    f"REST request failed: {method_upper} "
+                    f"{_safe_http_endpoint(url)}: {type(exc).__name__}"
+                ) from None
             self._api_endpoint_pool.mark_success(endpoint)
             break
         if not raw:

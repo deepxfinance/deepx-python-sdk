@@ -2,14 +2,21 @@ from __future__ import annotations
 
 import gzip
 import inspect
+import io
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Optional
+
+from ._errors import RPCError
+from ._rpc_transport import _safe_http_endpoint
 
 try:
     import websockets
 except Exception:  # pragma: no cover - optional dependency
     websockets = None
+
+
+DEFAULT_MAX_MESSAGE_SIZE = 1_048_576
 
 
 def _ensure_websockets() -> None:
@@ -575,13 +582,18 @@ def v1_unsub_account_spot_trades(
 
 @dataclass
 class WsClient:
-    base_url: str
-    path: str = "/v1/ws"
-    headers: Optional[dict[str, str]] = None
+    base_url: str = field(repr=False)
+    path: str = field(default="/v1/ws", repr=False)
+    headers: Optional[dict[str, str]] = field(default=None, repr=False)
     open_timeout: int = 10
     close_timeout: int = 10
     ping_interval: Optional[int] = 20
     ping_timeout: Optional[int] = 20
+    max_message_size: int = DEFAULT_MAX_MESSAGE_SIZE
+
+    def __post_init__(self) -> None:
+        if self.max_message_size <= 0:
+            raise ValueError("max_message_size must be positive")
 
     def ws_url(self) -> str:
         base = _to_ws_url(self.base_url).rstrip("/")
@@ -595,6 +607,7 @@ class WsClient:
             "close_timeout": self.close_timeout,
             "ping_interval": self.ping_interval,
             "ping_timeout": self.ping_timeout,
+            "max_size": self.max_message_size,
         }
         if self.headers:
             try:
@@ -605,13 +618,24 @@ class WsClient:
                 kwargs["additional_headers"] = self.headers
             else:
                 kwargs["extra_headers"] = self.headers
-        ws = await websockets.connect(self.ws_url(), **kwargs)
-        return WsSession(ws)
+        try:
+            ws = await websockets.connect(self.ws_url(), **kwargs)
+        except Exception as exc:
+            raise RPCError(
+                f"WebSocket connection failed at "
+                f"{_safe_http_endpoint(self.ws_url())}: {type(exc).__name__}"
+            ) from None
+        return WsSession(ws, max_message_size=self.max_message_size)
 
 
 class WsSession:
-    def __init__(self, ws: Any) -> None:
+    def __init__(
+        self, ws: Any, *, max_message_size: int = DEFAULT_MAX_MESSAGE_SIZE
+    ) -> None:
+        if max_message_size <= 0:
+            raise ValueError("max_message_size must be positive")
         self._ws = ws
+        self._max_message_size = max_message_size
 
     async def __aenter__(self) -> "WsSession":
         return self
@@ -634,10 +658,14 @@ class WsSession:
     async def recv_json(self) -> Any:
         raw = await self.recv()
         if isinstance(raw, bytes):
-            try:
-                raw = gzip.decompress(raw).decode("utf-8")
-            except Exception:
-                raw = raw.decode("utf-8", errors="replace")
+            if raw.startswith(b"\x1f\x8b"):
+                with gzip.GzipFile(fileobj=io.BytesIO(raw)) as compressed:
+                    raw = compressed.read(self._max_message_size + 1)
+            if len(raw) > self._max_message_size:
+                raise ValueError("WebSocket message exceeds max_message_size")
+            raw = raw.decode("utf-8", errors="replace")
+        elif len(raw.encode("utf-8")) > self._max_message_size:
+            raise ValueError("WebSocket message exceeds max_message_size")
         return json.loads(raw)
 
     async def recv_message(self) -> WsMessage:

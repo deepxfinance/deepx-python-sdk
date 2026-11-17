@@ -11,9 +11,10 @@ from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import urlsplit
 
 from ._errors import RPCError
+from ._rpc_transport import _safe_http_endpoint as _safe_url
 
 try:
     import websockets
@@ -1119,19 +1120,6 @@ def _is_additional_headers_keyword_error(error: TypeError) -> bool:
         "unexpected keyword argument 'additional_headers'" in rendered
         or 'unexpected keyword argument "additional_headers"' in rendered
     )
-
-
-def _safe_url(url: str) -> str:
-    try:
-        parsed = urlsplit(url)
-        hostname = parsed.hostname
-        if not parsed.scheme or hostname is None:
-            return "<configured endpoint>"
-        host = f"[{hostname}]" if ":" in hostname else hostname
-        port = f":{parsed.port}" if parsed.port is not None else ""
-        return urlunsplit((parsed.scheme, f"{host}{port}", parsed.path, "", ""))
-    except (TypeError, ValueError):
-        return "<configured endpoint>"
 
 
 __all__ = [

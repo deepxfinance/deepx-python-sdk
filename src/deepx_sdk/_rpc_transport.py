@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from contextvars import ContextVar
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from importlib.metadata import PackageNotFoundError, version
 import threading
 from typing import Iterator, Optional
@@ -25,7 +25,7 @@ DEFAULT_RPC_TIMEOUT_S = 30.0
 @dataclass
 class RpcTransportConfig:
     user_agent: str = DEFAULT_USER_AGENT
-    headers: dict[str, str] | None = None
+    headers: dict[str, str] | None = field(default=None, repr=False)
     timeout_s: float | None = DEFAULT_RPC_TIMEOUT_S
     endpoint_pool: "RpcEndpointPool | None" = None
 
@@ -171,6 +171,6 @@ def _safe_http_endpoint(url: str) -> str:
             return "<configured endpoint>"
         host = f"[{hostname}]" if ":" in hostname else hostname
         port = f":{parsed.port}" if parsed.port is not None else ""
-        return urlunsplit((parsed.scheme, f"{host}{port}", parsed.path, "", ""))
+        return urlunsplit((parsed.scheme, f"{host}{port}", "", "", ""))
     except (TypeError, ValueError):
         return "<configured endpoint>"

@@ -631,8 +631,8 @@ def merge_bridge_history_update(record: Mapping[str, Any], update: Mapping[str, 
 
 @dataclass
 class BridgeServiceClient:
-    bridge_api_url: str
-    api_key: str | None = None
+    bridge_api_url: str = field(repr=False)
+    api_key: str | None = field(default=None, repr=False)
     timeout: int = 30
     user_agent: str = DEFAULT_USER_AGENT
     _client: ApiClient = field(init=False, repr=False)
@@ -750,10 +750,10 @@ class BridgeApi:
     required when the network registry has no default bridge.
     """
 
-    rpc_url: str | None = None
+    rpc_url: str | None = field(default=None, repr=False)
     chain_id: int | None = None
     contract_address: str | None = None
-    private_key: str | None = None
+    private_key: str | None = field(default=None, repr=False)
     net: str | None = None
 
     def __post_init__(self) -> None:

@@ -206,17 +206,17 @@ def _normalize_order_type(order_type: str | int) -> str:
 
 @dataclass
 class ChainClient:
-    substrate_ws: str = ""
-    evm_rpc_url: str = ""
-    private_key: str = ""
+    substrate_ws: str = field(default="", repr=False)
+    evm_rpc_url: str = field(default="", repr=False)
+    private_key: str = field(default="", repr=False)
     perp_precompile_address: str = ""
     spot_precompile_address: str = ""
     lending_precompile_address: str = ""
     subaccount_precompile_address: str = ""
     system_precompile_address: str = ""
     subaccount: str = ""
-    api_base_url: Optional[str] = None
-    api_client: Any = None
+    api_base_url: Optional[str] = field(default=None, repr=False)
+    api_client: Any = field(default=None, repr=False)
     net: Optional[str] = None
     chain_id: Optional[int] = None
     gas_limit: Optional[int] = None
@@ -225,7 +225,7 @@ class ChainClient:
     use_legacy: bool = False
     nonce_ms: Optional[int] = None
     evm_rpc_user_agent: str = DEFAULT_USER_AGENT
-    evm_rpc_headers: Optional[dict[str, str]] = None
+    evm_rpc_headers: Optional[dict[str, str]] = field(default=None, repr=False)
     evm_rpc_timeout: Optional[float] = None
     wait_for_finalized: bool = True
     print_state: bool = False
@@ -234,9 +234,9 @@ class ChainClient:
     node_pool_limit_per_account: int = 50
     max_pool_transactions_per_account: int = 48
     priority_pool_reserve: int = 2
-    substrate_ws_endpoints: Sequence[str] | None = None
-    recovery_substrate_ws_endpoints: Sequence[str] | None = None
-    evm_rpc_endpoints: Sequence[str] | None = None
+    substrate_ws_endpoints: Sequence[str] | None = field(default=None, repr=False)
+    recovery_substrate_ws_endpoints: Sequence[str] | None = field(default=None, repr=False)
+    evm_rpc_endpoints: Sequence[str] | None = field(default=None, repr=False)
     market: "MarketClient" = field(init=False, repr=False)
     perp_market: "PerpMarketClient" = field(init=False, repr=False)
     spot_market: "SpotMarketClient" = field(init=False, repr=False)

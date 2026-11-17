@@ -637,8 +637,8 @@ def test_substrate_ws_failover_reports_all_connection_errors() -> None:
 
     message = str(exc_info.value)
     assert "2 attempted" in message
-    assert "substrate-a.example/rpc" in message
-    assert "substrate-b.example/rpc" in message
+    assert "substrate-a.example" in message
+    assert "substrate-b.example" in message
     assert "user" not in message
     assert "secret" not in message
 

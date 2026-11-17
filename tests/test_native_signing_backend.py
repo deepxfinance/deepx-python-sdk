@@ -14,11 +14,11 @@ from scalecodec.base import ScaleBytes
 
 from deepx_sdk import ApiClient
 from deepx_sdk import _native_py
+from _public_test_keys import PUBLIC_TEST_ADDRESS as ADDRESS
+from _public_test_keys import PUBLIC_TEST_PRIVATE_KEY as KEY
 
 
-# Public test scalar, with signatures captured before changing the backend.
-KEY = "0x" + "01".zfill(64)
-ADDRESS = "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf"
+# Signatures captured before changing the backend using the public test scalar.
 PAYLOAD = b"deepx native signing regression"
 SUBSTRATE_SIGNATURE = (
     "1b663be0d5f6fb3fa733d6aa4db1dce5fcdff9d21f2492a2f20ffb38dcf22d882d"
