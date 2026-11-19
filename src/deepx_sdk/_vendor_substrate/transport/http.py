@@ -1,7 +1,9 @@
+# Modified by DeepX to redact transport failure details.
 import json
 
 import requests
 
+from ..._rpc_transport import _safe_http_endpoint
 from .base import TransportBase
 from ..exceptions import SubstrateRequestException, ConfigurationError
 
@@ -20,7 +22,12 @@ class HttpTransport(TransportBase):
         if result_handler:
             raise ConfigurationError("Result handlers only available for websockets (ws://) connections")
 
-        response = self.session.request("POST", self.url, data=json.dumps(payload), headers=self.headers)
+        try:
+            response = self.session.request("POST", self.url, data=json.dumps(payload), headers=self.headers)
+        except (requests.RequestException, OSError, ValueError) as exc:
+            raise SubstrateRequestException(
+                f"RPC request failed: POST {_safe_http_endpoint(self.url)}: {type(exc).__name__}"
+            ) from None
 
         if response.status_code != 200:
             raise SubstrateRequestException(

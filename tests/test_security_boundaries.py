@@ -428,3 +428,94 @@ def test_benchmark_output_and_config_hide_credentials(monkeypatch, capsys) -> No
     output = capsys.readouterr()
     assert "endpoint: wss://node.invalid:8443" in output.out
     assert_safe(output.out + output.err)
+
+
+def test_substrate_http_transport_errors_and_structured_responses(monkeypatch) -> None:
+    from deepx_sdk._vendor_substrate.transport.http import HttpTransport, requests
+    from deepx_sdk._vendor_substrate.exceptions import SubstrateRequestException
+
+    transport = HttpTransport(URL, headers={"Authorization": "header-marker"})
+    payload = {"id": 1, "method": "state_getMetadata", "params": []}
+
+    def fail(method, url, **kwargs):
+        assert url == URL
+        assert kwargs["headers"]["Authorization"] == "header-marker"
+        raise requests.ConnectionError(f"proxy failed for {url}")
+
+    monkeypatch.setattr(transport.session, "request", fail)
+    with pytest.raises(SubstrateRequestException) as caught:
+        transport.rpc_request(payload)
+    assert "https://node.invalid:8443" in str(caught.value)
+    assert_safe("".join(traceback.format_exception(caught.value)))
+
+    error = {"code": -32602, "message": "Invalid params"}
+    response = SimpleNamespace(status_code=200, json=lambda: {"error": error})
+    monkeypatch.setattr(transport.session, "request", lambda *a, **kw: response)
+    with pytest.raises(SubstrateRequestException) as structured:
+        transport.rpc_request(payload)
+    assert structured.value.args == (error,)
+
+
+@pytest.mark.parametrize("stage", ["connect", "reconnect", "retry", "send", "receive", "close"])
+def test_substrate_ws_transport_diagnostics(monkeypatch, caplog, stage) -> None:
+    from deepx_sdk._vendor_substrate import base
+    from deepx_sdk._vendor_substrate.transport import websocket as ws
+
+    url = URL.replace("https:", "wss:")
+    attempts = []
+
+    def fail(*args):
+        raise OSError(f"socket failure at {url}")
+
+    def closed(*args):
+        raise ws.WebSocketConnectionClosedException(f"closed at {url}")
+
+    def connect(endpoint, **options):
+        attempts.append(endpoint)
+        if stage == "connect" or (stage == "reconnect" and len(attempts) == 2):
+            fail()
+        if stage in {"reconnect", "retry"}:
+            send = closed
+        elif stage == "send":
+            send = fail
+        else:
+            def send(_):
+                pass
+        return SimpleNamespace(send=send, recv=fail, close=fail)
+
+    caplog.set_level("DEBUG", logger=base.logger.name)
+    monkeypatch.setattr(ws, "create_connection", connect)
+    with pytest.raises(ws.SubstrateRequestException) as caught:
+        transport = ws.WebsocketTransport(url=url, debug_fn=base.SubstrateInterface.debug_message)
+        if stage == "close":
+            transport.close()
+        else:
+            transport.rpc_request({"id": 1, "method": "system_health", "params": []})
+    assert attempts == [url] * (2 if stage in {"reconnect", "retry"} else 1)
+    assert "wss://node.invalid:8443" in caplog.text
+    assert "wss://node.invalid:8443" in str(caught.value)
+    assert_safe(caplog.text + "".join(traceback.format_exception(caught.value)))
+
+
+def test_substrate_ws_reconnect_delivers_subscription_without_logging_payload(monkeypatch, caplog) -> None:
+    from deepx_sdk._vendor_substrate import base
+    from deepx_sdk._vendor_substrate.transport import websocket as ws
+
+    url = URL.replace("https:", "wss:")
+    request = {"id": 1, "method": "state_subscribeStorage", "params": []}
+    subscription = "header-marker"
+    update = {"params": {"subscription": subscription, "result": "api-key-marker"}}
+    messages = iter([json.dumps({"id": 1, "result": subscription}), json.dumps(update)])
+    sent = []
+
+    def closed(_):
+        raise ws.WebSocketConnectionClosedException("path-marker")
+
+    sockets = iter([SimpleNamespace(send=closed), SimpleNamespace(send=sent.append, recv=messages.__next__)])
+    monkeypatch.setattr(ws, "create_connection", lambda *args, **kwargs: next(sockets))
+    caplog.set_level("DEBUG", logger=base.logger.name)
+    transport = ws.WebsocketTransport(url=url, debug_fn=base.SubstrateInterface.debug_message)
+    result = transport.rpc_request(request, result_handler=lambda msg, number, sub: (msg, number, sub))
+    assert result == (update, 0, subscription)
+    assert [json.loads(body) for body in sent] == [request]
+    assert_safe(caplog.text)

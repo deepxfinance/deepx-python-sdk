@@ -6,3 +6,5 @@ License: Apache License, Version 2.0 (see LICENSE).
 DeepX includes the RPC, storage, and SCALE implementation in a private
 namespace. Wallet helpers, contract helpers, and the light client are omitted. The Substrate interface
 uses the SDK's coincurve-backed keypair. Storage uses a relative import.
+HTTP and WebSocket transport diagnostics redact connection details.
+The WebSocket transport retries a closed connection once per request.
