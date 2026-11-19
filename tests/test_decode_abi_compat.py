@@ -1,16 +1,5 @@
-import sys
-import types
 
 from eth_abi import encode
-
-if "substrateinterface" not in sys.modules:
-    substrate_stub = types.ModuleType("substrateinterface")
-
-    class _SubstrateInterfacePlaceholder:
-        pass
-
-    substrate_stub.SubstrateInterface = _SubstrateInterfacePlaceholder
-    sys.modules["substrateinterface"] = substrate_stub
 
 from deepx_sdk._perp_market import (
     _PERP_MARKET_TUPLE,

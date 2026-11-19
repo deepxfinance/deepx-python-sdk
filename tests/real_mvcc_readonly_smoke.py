@@ -12,8 +12,8 @@ import json
 import secrets
 
 import requests
+from eth_keys.datatypes import Signature
 from scalecodec.base import ScaleBytes
-from substrateinterface import ExtrinsicReceipt
 
 from deepx_sdk import _native_py
 from deepx_sdk._async_encoder import ExtrinsicEncoder, _encode_pallet_call_sync
@@ -21,6 +21,7 @@ from deepx_sdk._async_tracker import TransactionTracker
 from deepx_sdk._perp_market import _perp_cancel_params, _perp_place_params
 from deepx_sdk._runtime_compat import _ImmortalMetadata, uses_events_map
 from deepx_sdk._spot_market import _spot_cancel_params, _spot_place_params
+from deepx_sdk._vendor_substrate import ExtrinsicReceipt
 
 
 def check_sync_receipts(url: str, block_hash: str) -> list[dict]:
@@ -150,7 +151,9 @@ def check(url: str) -> dict:
                                 for name, definition in extensions.items())
             if len(payload) > 256:
                 payload = hashlib.blake2b(payload, digest_size=32).digest()
-            assert snapshot.keypair.verify(payload, bytes.fromhex(decoded["signature"][2:]))
+            signature = Signature(bytes.fromhex(decoded["signature"][2:]))
+            recovered = signature.recover_public_key_from_msg(payload)
+            assert recovered.to_canonical_address() == snapshot.keypair.public_key
             assert substrate.metadata is metadata
 
         block_hash = rpc("chain_getFinalizedHead", [])

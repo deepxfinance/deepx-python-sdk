@@ -675,7 +675,7 @@ def test_default_bootstrap_closes_transport_when_initialization_fails(
 
 def test_missing_substrate_interface_is_reported_as_sdk_error(monkeypatch) -> None:
     def missing() -> object:
-        raise ImportError("install substrate-interface")
+        raise ImportError("missing dependency")
 
     monkeypatch.setattr(
         encoder_module._native_py,
@@ -685,7 +685,7 @@ def test_missing_substrate_interface_is_reported_as_sdk_error(monkeypatch) -> No
 
     async def run() -> None:
         encoder = ExtrinsicEncoder("ws://node", "0x" + "11" * 32)
-        with pytest.raises(DeepXSDKError, match="substrate-interface"):
+        with pytest.raises(DeepXSDKError, match="Reinstall deepx-python-sdk"):
             await encoder.bootstrap()
 
     asyncio.run(run())

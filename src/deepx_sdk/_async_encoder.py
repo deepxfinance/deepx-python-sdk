@@ -11,11 +11,7 @@ from typing import Any
 
 from . import _native_py
 from ._errors import DeepXSDKError, ValidationError
-
-try:
-    from substrateinterface import SubstrateInterface as _SubstrateInterface
-except Exception:  # pragma: no cover - exercised when the optional import is absent
-    _SubstrateInterface = object  # type: ignore[assignment,misc]
+from ._vendor_substrate import SubstrateInterface as _SubstrateInterface
 
 
 _TIMESTAMP_WINDOW_MS = 60 * 60 * 1_000
@@ -101,7 +97,7 @@ class TimestampNonceAllocator:
             self._reserved.discard(explicit)
 
 
-class _FrozenSubstrateInterface(_SubstrateInterface):  # type: ignore[misc]
+class _FrozenSubstrateInterface(_SubstrateInterface):
     """A metadata-only SubstrateInterface that cannot access a transport."""
 
     def __init__(self, initialized: Any, genesis_hash: str) -> None:
@@ -366,8 +362,8 @@ class ExtrinsicEncoder:
             raise
         except ImportError as exc:
             raise DeepXSDKError(
-                "Async encoder requires substrate-interface; install "
-                "'substrate-interface'."
+                "Missing dependency for the async encoder. Reinstall deepx-python-sdk "
+                "with its dependencies."
             ) from exc
         except Exception as exc:
             raise DeepXSDKError(
@@ -387,7 +383,7 @@ def _freeze_substrate(substrate: Any, genesis_hash: str) -> Any:
 
 
 def _create_system_events_storage_key(substrate: Any) -> str:
-    from substrateinterface.storage import StorageKey
+    from ._vendor_substrate.storage import StorageKey
 
     key = StorageKey.create_from_storage_function(
         "System",

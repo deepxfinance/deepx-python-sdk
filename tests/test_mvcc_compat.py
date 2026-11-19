@@ -10,13 +10,13 @@ import pytest
 from scalecodec.base import RuntimeConfigurationObject, ScaleBytes
 from scalecodec.type_registry import load_type_registry_preset
 from scalecodec.types import GenericExtrinsicV4
-from substrateinterface import SubstrateInterface
 
 from deepx_sdk import _native_py, _perp_market
 from deepx_sdk._async_encoder import ExtrinsicEncoder, RuntimeSnapshot
 from deepx_sdk._async_tracker import TransactionTracker
 from deepx_sdk._errors import DeepXSDKError, RPCError
 from deepx_sdk._runtime_compat import _ImmortalMetadata, create_signed_extrinsic
+from deepx_sdk._vendor_substrate import SubstrateInterface
 
 
 class Metadata:

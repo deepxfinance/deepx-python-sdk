@@ -1,0 +1,8 @@
+This directory includes code from Python Substrate Interface 1.8.1.
+Copyright Stichting Polkascan (Polkascan Foundation).
+Source: https://github.com/polkascan/py-substrate-interface/tree/v1.8.1
+License: Apache License, Version 2.0 (see LICENSE).
+
+DeepX includes the RPC, storage, and SCALE implementation in a private
+namespace. Wallet helpers, contract helpers, and the light client are omitted. The Substrate interface
+uses the SDK's coincurve-backed keypair. Storage uses a relative import.

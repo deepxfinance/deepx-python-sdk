@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import sys
 import types
 
 import pytest
@@ -8,15 +7,6 @@ from eth_abi import encode
 from eth_utils import keccak
 
 # Avoid hard dependency during package import in test environments.
-if "substrateinterface" not in sys.modules:
-    substrate_stub = types.ModuleType("substrateinterface")
-
-    class _SubstrateInterfacePlaceholder:
-        pass
-
-    substrate_stub.SubstrateInterface = _SubstrateInterfacePlaceholder
-    sys.modules["substrateinterface"] = substrate_stub
-
 from deepx_sdk import ChainClient, _lending, _perp_market, _spot_market, _subaccount, _substrate
 from deepx_sdk import client as _client_mod
 from deepx_sdk._perp_market import _PERP_MARKET_TUPLE, _decode_perp_market, _decode_perp_market_tuple

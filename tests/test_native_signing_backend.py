@@ -4,7 +4,6 @@ import os
 import sys
 from concurrent.futures import ThreadPoolExecutor
 
-import ecdsa
 import pytest
 from eth_account import Account
 from eth_account.messages import encode_defunct
@@ -39,7 +38,6 @@ def reject_python_signing(monkeypatch):
 
     monkeypatch.setattr(NativeECCBackend, "private_key_to_public_key", rejected)
     monkeypatch.setattr(NativeECCBackend, "ecdsa_sign", rejected)
-    monkeypatch.setattr(ecdsa.SigningKey, "sign_digest", rejected)
 
 
 @pytest.mark.parametrize("legacy,expected_tx,expected_hash", [

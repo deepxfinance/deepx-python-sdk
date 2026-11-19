@@ -2,19 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import json
-import sys
 import types
 
 # Avoid hard dependency during package import in test environments.
-if "substrateinterface" not in sys.modules:
-    substrate_stub = types.ModuleType("substrateinterface")
-
-    class _SubstrateInterfacePlaceholder:
-        pass
-
-    substrate_stub.SubstrateInterface = _SubstrateInterfacePlaceholder
-    sys.modules["substrateinterface"] = substrate_stub
-
 import deepx_sdk as dx
 from deepx_sdk._network import DEFAULT_NET, network_config
 import deepx_sdk.api as api_mod

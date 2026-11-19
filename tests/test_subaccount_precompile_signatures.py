@@ -1,18 +1,7 @@
 from __future__ import annotations
 
-import sys
 import types
 from typing import Any
-
-# Avoid hard dependency on substrate-interface when importing deepx_sdk package.
-if "substrateinterface" not in sys.modules:
-    substrate_stub = types.ModuleType("substrateinterface")
-
-    class _SubstrateInterfacePlaceholder:
-        pass
-
-    substrate_stub.SubstrateInterface = _SubstrateInterfacePlaceholder
-    sys.modules["substrateinterface"] = substrate_stub
 
 from deepx_sdk import _subaccount
 

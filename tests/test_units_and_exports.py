@@ -1,19 +1,8 @@
 from __future__ import annotations
 
-import sys
-import types
 from decimal import Decimal
 
 import pytest
-
-if "substrateinterface" not in sys.modules:
-    substrate_stub = types.ModuleType("substrateinterface")
-
-    class _SubstrateInterfacePlaceholder:
-        pass
-
-    substrate_stub.SubstrateInterface = _SubstrateInterfacePlaceholder
-    sys.modules["substrateinterface"] = substrate_stub
 
 import deepx_sdk as dx
 

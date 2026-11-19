@@ -2,14 +2,8 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-try:
-    from substrateinterface import SubstrateInterface
-except ImportError as exc:  # pragma: no cover
-    raise ImportError(
-        "Missing dependency for Substrate access. Install with 'pip install substrate-interface'."
-    ) from exc
-
 from ._types import PerpPriceBounds
+from ._vendor_substrate import SubstrateInterface
 
 
 def get_perp_price_bounds(substrate_ws: str, market_id: int) -> PerpPriceBounds:

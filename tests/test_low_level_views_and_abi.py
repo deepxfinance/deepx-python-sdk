@@ -1,21 +1,11 @@
 from __future__ import annotations
 
 import json
-import sys
 import types
 
 import pytest
 from eth_abi import encode
 from eth_utils import keccak
-
-if "substrateinterface" not in sys.modules:
-    substrate_stub = types.ModuleType("substrateinterface")
-
-    class _SubstrateInterfacePlaceholder:
-        pass
-
-    substrate_stub.SubstrateInterface = _SubstrateInterfacePlaceholder
-    sys.modules["substrateinterface"] = substrate_stub
 
 from deepx_sdk import _abi, _lending, _perp_market, _spot_market, _subaccount, _system
 

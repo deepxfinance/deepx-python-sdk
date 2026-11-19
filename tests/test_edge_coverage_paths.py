@@ -8,15 +8,6 @@ import types
 import pytest
 from eth_abi import encode
 
-if "substrateinterface" not in sys.modules:
-    substrate_stub = types.ModuleType("substrateinterface")
-
-    class _SubstrateInterfacePlaceholder:
-        pass
-
-    substrate_stub.SubstrateInterface = _SubstrateInterfacePlaceholder
-    sys.modules["substrateinterface"] = substrate_stub
-
 import deepx_sdk as dx
 from deepx_sdk import (
     _lending,

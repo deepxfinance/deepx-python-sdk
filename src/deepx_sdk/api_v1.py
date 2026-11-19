@@ -1315,8 +1315,8 @@ class ChainTxV1Client:
             from ._native_py import build_ethereum_transact_extrinsic
         except Exception as exc:
             raise RuntimeError(
-                "Python substrate extrinsic builder unavailable; install required Python deps "
-                "(substrate-interface, eth-account, eth-utils, and friends)"
+                "Python substrate extrinsic builder unavailable. Reinstall deepx-python-sdk "
+                "with its dependencies."
             ) from exc
         return build_ethereum_transact_extrinsic(
             substrate_ws=substrate_ws,
@@ -1350,8 +1350,8 @@ class ChainTxV1Client:
             from ._native_py import build_signed_pallet_call_extrinsic
         except Exception as exc:
             raise RuntimeError(
-                "Python substrate extrinsic builder unavailable; install required Python deps "
-                "(substrate-interface and friends)"
+                "Python substrate extrinsic builder unavailable. Reinstall deepx-python-sdk "
+                "with its dependencies."
             ) from exc
         return build_signed_pallet_call_extrinsic(
             substrate_ws=self._client.substrate_ws,

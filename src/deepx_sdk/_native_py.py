@@ -682,11 +682,11 @@ def _get_substrate_interface_cls() -> Any:
     global _SubstrateInterface
     if _SubstrateInterface is None:
         try:
-            from substrateinterface import SubstrateInterface
-        except Exception as exc:
+            from ._vendor_substrate import SubstrateInterface
+        except ImportError as exc:
             raise ImportError(
-                "Missing dependency for Substrate submit. Install with "
-                "'pip install substrate-interface'."
+                "Missing dependency for Substrate submit. Reinstall deepx-python-sdk "
+                "with its dependencies."
             ) from exc
         _SubstrateInterface = SubstrateInterface
     return _SubstrateInterface
@@ -1733,14 +1733,14 @@ def _rpc_storage_raw_hex(*, substrate: Any, key_hex: str, block_hash: str) -> st
 
 
 def _system_threads_storage_key_hex(*, block_number: int) -> str:
-    from substrateinterface.utils import hasher
+    from ._vendor_substrate.utils import hasher
 
     key = bytes(hasher.xxh128(b"System")) + bytes(hasher.xxh128(b"Threads")) + _u64_scale(block_number)
     return "0x" + key.hex()
 
 
 def _system_events_map_storage_key_hex(*, block_number: int, thread_id: int) -> str:
-    from substrateinterface.utils import hasher
+    from ._vendor_substrate.utils import hasher
 
     num_enc = _u64_scale(block_number)
     tid_enc = _u8_scale(thread_id)
