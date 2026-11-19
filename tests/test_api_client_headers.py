@@ -234,7 +234,7 @@ def test_api_client_http_error_with_plain_body_raises_rest_error(monkeypatch) ->
 
     err = exc_info.value
     assert err.status_code == 503
-    assert err.message == "Service Unavailable"
+    assert err.message == "REST request failed: GET https://api-testnet.deepx.fi: HTTP 503"
     assert err.code is None
     assert err.error_type is None
 
@@ -385,7 +385,7 @@ def test_api_client_custom_transport_urls_and_request_edges(monkeypatch) -> None
     with pytest.raises(dx.RESTError) as exc_info:
         client.request("GET", "/v1/error")
     assert exc_info.value.status_code == 500
-    assert exc_info.value.message == '["not", "object"]'
+    assert exc_info.value.message == "REST request failed: GET http://api.example.test: HTTP 500"
 
 
 def test_api_client_invalid_net_raises() -> None:

@@ -4,6 +4,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from importlib.metadata import PackageNotFoundError, version
+import re
 import threading
 from typing import Iterator, Optional
 from urllib.parse import urlsplit, urlunsplit
@@ -180,7 +181,11 @@ def _safe_http_endpoint(url: str) -> str:
     try:
         parsed = urlsplit(url)
         hostname = parsed.hostname
-        if not parsed.scheme or hostname is None:
+        if (
+            parsed.scheme not in {"http", "https", "ws", "wss", "socks4", "socks4a", "socks5", "socks5h"}
+            or not hostname
+            or not re.fullmatch(r"[a-zA-Z0-9._:-]+", hostname)
+        ):
             return "<configured endpoint>"
         host = f"[{hostname}]" if ":" in hostname else hostname
         port = f":{parsed.port}" if parsed.port is not None else ""

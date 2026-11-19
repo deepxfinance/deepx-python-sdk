@@ -1103,13 +1103,13 @@ def _create_substrate(
     connection_errors: list[tuple[str, Exception]] = []
     substrate: Any = None
     for endpoint in endpoints:
-        ws_options: dict[str, Any] = {"timeout": effective_ms / 1000.0}
-        ws_options.update(_ws_proxy_kwargs(endpoint))
-        kwargs: dict[str, Any] = {
-            "url": endpoint,
-            "ws_options": ws_options,
-        }
         try:
+            ws_options: dict[str, Any] = {"timeout": effective_ms / 1000.0}
+            ws_options.update(_ws_proxy_kwargs(endpoint))
+            kwargs: dict[str, Any] = {
+                "url": endpoint,
+                "ws_options": ws_options,
+            }
             try:
                 substrate = substrate_cls(**kwargs)
             except TypeError:

@@ -9,11 +9,11 @@ import os
 import sys
 import time
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
-from urllib.parse import urlsplit, urlunsplit
 
 from deepx_sdk import AsyncChainClient, PendingTransaction
+from deepx_sdk._rpc_transport import _safe_http_endpoint
 
 
 _DEFAULT_SLOT_DURATION_MS = 70
@@ -24,8 +24,8 @@ _IN_BLOCK_DISPATCH_P95_LIMIT_MS = 10.0
 
 @dataclass(frozen=True)
 class BenchmarkConfig:
-    substrate_ws: str
-    private_key: str
+    substrate_ws: str = field(repr=False)
+    private_key: str = field(repr=False)
     subaccount: str
     market_id: int
     side: str
@@ -151,23 +151,10 @@ def _optional_integer_environment(name: str) -> int | None:
         raise ValueError(f"{name} must be an integer") from exc
 
 
-def _safe_endpoint(url: str) -> str:
-    if not url:
-        return "<not configured>"
-    try:
-        parsed = urlsplit(url)
-        if not parsed.scheme or parsed.hostname is None:
-            return "<configured endpoint>"
-        host = f"[{parsed.hostname}]" if ":" in parsed.hostname else parsed.hostname
-        port = f":{parsed.port}" if parsed.port is not None else ""
-        return urlunsplit((parsed.scheme, host + port, parsed.path, "", ""))
-    except (TypeError, ValueError):
-        return "<configured endpoint>"
-
-
 def _print_configuration(config: BenchmarkConfig, *, real_chain: bool) -> None:
     print(f"real_chain_executed: {'yes' if real_chain else 'no'}")
-    print(f"endpoint: {_safe_endpoint(config.substrate_ws)}")
+    endpoint = _safe_http_endpoint(config.substrate_ws) if config.substrate_ws else "<not configured>"
+    print(f"endpoint: {endpoint}")
     print(f"tx_count: {config.tx_count}")
     print(f"rolling_window: {config.rolling_window}")
     print(f"configured_slot_duration_ms: {config.slot_duration_ms}")

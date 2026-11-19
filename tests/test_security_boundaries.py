@@ -82,6 +82,8 @@ def test_client_representations_exclude_nested_credentials() -> None:
     ("https://node.invalid:bad/path-marker", "<configured endpoint>"),
     ("https://[invalid/path-marker", "<configured endpoint>"),
     ("path-marker", "<configured endpoint>"),
+    ("path-marker://node.invalid", "<configured endpoint>"),
+    (r"https://node.invalid\path-marker/status", "<configured endpoint>"),
     ("https:///path-marker", "<configured endpoint>"),
 ])
 def test_endpoint_displays_only_origin(sanitize, url, expected) -> None:
@@ -386,3 +388,43 @@ def test_bridge_http_errors_preserve_api_fields_without_transport_chain(monkeypa
         assert error.details == payload["details"]
     else:
         assert "POST https://node.invalid:8443: HTTP 400" in error.message
+
+
+@pytest.mark.parametrize("kind", ["rest", "async-rest"])
+@pytest.mark.parametrize("body", [b"{}", b"upstream path-marker", b'["path-marker"]', None])
+def test_rest_http_error_fallback_hides_transport_data(monkeypatch, kind, body) -> None:
+    class Unreadable(io.BytesIO):
+        def read(self, *args):
+            raise OSError("read failure at path-marker")
+
+    def fail(req, **kwargs):
+        stream = Unreadable() if body is None else io.BytesIO(body)
+        raise urllib.error.HTTPError(req.full_url, 502, "upstream query-marker", {}, stream)
+
+    monkeypatch.setattr("urllib.request.urlopen", fail)
+    with pytest.raises(dx.RESTError) as caught:
+        _http_security_call(kind, URL)
+    assert caught.value.status_code == 502
+    assert caught.value.message == "REST request failed: GET https://node.invalid:8443: HTTP 502"
+    assert_safe("".join(traceback.format_exception(caught.value)))
+
+
+def test_substrate_invalid_proxy_port_hides_transport_details(monkeypatch) -> None:
+    monkeypatch.setenv("https_proxy", "http://proxy.invalid:password-marker")
+    with pytest.raises(dx.RPCError) as caught:
+        _native_py._create_substrate(lambda **kwargs: pytest.fail("unexpected connection"),
+                                     URL.replace("https:", "wss:"))
+    assert "wss://node.invalid:8443" in str(caught.value)
+    assert_safe("".join(traceback.format_exception(caught.value)))
+
+
+def test_benchmark_output_and_config_hide_credentials(monkeypatch, capsys) -> None:
+    script = runpy.run_path(str(Path(__file__).with_name("benchmark_async_chain.py")))
+    monkeypatch.setenv("SUBSTRATE_WS", URL.replace("https:", "wss:"))
+    monkeypatch.setenv("PRIVATE_KEY", "private-key-marker")
+    config = script["BenchmarkConfig"].from_environment(require_credentials=False)
+    assert_safe(repr(config))
+    assert script["main"](["--dry-run"]) == 0
+    output = capsys.readouterr()
+    assert "endpoint: wss://node.invalid:8443" in output.out
+    assert_safe(output.out + output.err)

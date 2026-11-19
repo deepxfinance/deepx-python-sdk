@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import json
 import types
 import urllib.error
@@ -762,7 +763,7 @@ def test_fetch_sign_bridge_out_signature_invalid_params_returns_body(monkeypatch
 def test_fetch_sign_bridge_out_signature_http_error_branches(monkeypatch) -> None:
     """Lines 245-246, 251-252: HTTPError with bad fp.read() and non-JSON body."""
 
-    class _BadFp:
+    class _BadFp(io.BytesIO):
         def read(self) -> bytes:
             raise OSError("socket closed")
 

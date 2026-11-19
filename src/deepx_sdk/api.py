@@ -182,40 +182,36 @@ class ApiClient:
                 ):
                     exc.close()
                     continue
-                raw = exc.read().decode("utf-8", errors="replace")
-                payload: Any
                 try:
+                    raw = exc.read().decode("utf-8", errors="replace")
                     payload = json.loads(raw) if raw else {}
-                except json.JSONDecodeError:
+                except (OSError, http.client.HTTPException, ValueError, RecursionError):
                     payload = {}
-                if isinstance(payload, dict):
-                    message = str(
-                        payload.get("message")
-                        or payload.get("msg")
-                        or payload.get("error")
-                        or exc.reason
-                    )
-                    code = payload.get("code")
-                    error_type = payload.get("errorType") or payload.get("error_type")
-                    details = payload.get("details")
-                    if isinstance(code, int) and not isinstance(code, bool):
-                        err = parse_api_error_code(code, message)
-                        err.status_code = exc.code
-                        err.message = message
-                        if error_type:
-                            err.error_type = error_type
-                        err.details = details
-                        raise err from None
-                    raise RESTError(
-                        status_code=exc.code,
-                        message=message,
-                        code=code,
-                        error_type=error_type,
-                        details=details,
-                    ) from None
+                if not isinstance(payload, dict):
+                    payload = {}
+                message = str(
+                    payload.get("message")
+                    or payload.get("msg")
+                    or payload.get("error")
+                    or f"REST request failed: {method_upper} {_safe_http_endpoint(endpoint)}: HTTP {exc.code}"
+                )
+                code = payload.get("code")
+                error_type = payload.get("errorType") or payload.get("error_type")
+                details = payload.get("details")
+                if isinstance(code, int) and not isinstance(code, bool):
+                    err = parse_api_error_code(code, message)
+                    err.status_code = exc.code
+                    err.message = message
+                    if error_type:
+                        err.error_type = error_type
+                    err.details = details
+                    raise err from None
                 raise RESTError(
                     status_code=exc.code,
-                    message=raw or str(exc.reason),
+                    message=message,
+                    code=code,
+                    error_type=error_type,
+                    details=details,
                 ) from None
             except (
                 TimeoutError,
