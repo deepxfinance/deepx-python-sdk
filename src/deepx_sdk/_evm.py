@@ -9,6 +9,7 @@ from typing import Any
 from ._native_py import _native_debug
 from ._rpc_transport import (
     _safe_http_endpoint,
+    _validate_http_endpoint,
     rpc_request_endpoints,
     rpc_request_options,
 )
@@ -34,13 +35,14 @@ def evm_call(evm_rpc_url: str, to: str, data: bytes) -> bytes:
             f"evm_call:start method=eth_call url={_safe_http_endpoint(endpoint)} "
             f"timeout={timeout_s}s to={to}"
         )
-        req = urllib.request.Request(
-            endpoint,
-            data=json.dumps(payload).encode("utf-8"),
-            headers=headers,
-        )
         t0 = time.monotonic()
         try:
+            _validate_http_endpoint(endpoint)
+            req = urllib.request.Request(
+                endpoint,
+                data=json.dumps(payload).encode("utf-8"),
+                headers=headers,
+            )
             with urllib.request.urlopen(req, timeout=timeout_s) as resp:
                 body = json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError as exc:

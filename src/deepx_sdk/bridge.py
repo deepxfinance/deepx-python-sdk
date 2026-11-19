@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import http.client
 import json
 import re
 import secrets
@@ -16,7 +17,11 @@ from ._evm import evm_call
 from ._native import build_signed_tx
 from ._native_py import _rpc_call
 from ._network import network_config, resolve_net
-from ._rpc_transport import DEFAULT_USER_AGENT
+from ._rpc_transport import (
+    DEFAULT_USER_AGENT,
+    _safe_http_endpoint,
+    _validate_http_endpoint,
+)
 from ._types import TxResult
 from .api import ApiClient
 
@@ -278,17 +283,18 @@ def fetch_sign_bridge_out_signature(
     request_body = create_sign_bridge_out_request_body(body, request_dst_chain_id)
 
     payload_bytes = json.dumps(request_body).encode("utf-8")
-    req = urllib.request.Request(
-        fetch_url,
-        data=payload_bytes,
-        method="POST",
-        headers={
-            "Content-Type": "application/json",
-            # the gateway CDN rejects urllib's default User-Agent with 403
-            "User-Agent": user_agent,
-        },
-    )
     try:
+        _validate_http_endpoint(fetch_url)
+        req = urllib.request.Request(
+            fetch_url,
+            data=payload_bytes,
+            method="POST",
+            headers={
+                "Content-Type": "application/json",
+                # the gateway CDN rejects urllib's default User-Agent with 403
+                "User-Agent": user_agent,
+            },
+        )
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             raw = resp.read().decode("utf-8")
     except urllib.error.HTTPError as exc:
@@ -304,15 +310,27 @@ def fetch_sign_bridge_out_signature(
                 payload = json.loads(raw)
             except json.JSONDecodeError:
                 payload = {}
-        message = _response_message(payload) or exc.reason or "Bridge signature request failed"
+        message = _response_message(payload) or (
+            f"Bridge signature request failed: POST {_safe_http_endpoint(fetch_url)}: HTTP {exc.code}"
+        )
         raise RESTError(
             status_code=exc.code,
             message=message,
             code=payload.get("code") if isinstance(payload, Mapping) else None,
-            error_type=payload.get("errorType") if isinstance(payload, Mapping) else None,
-        ) from exc
-    except urllib.error.URLError as exc:
-        raise RESTError(status_code=None, message=f"Bridge signature request failed: {exc}") from exc
+            error_type=(
+                (payload.get("errorType") or payload.get("error_type"))
+                if isinstance(payload, Mapping) else None
+            ),
+            details=payload.get("details") if isinstance(payload, Mapping) else None,
+        ) from None
+    except (urllib.error.URLError, OSError, ValueError, http.client.InvalidURL) as exc:
+        raise RESTError(
+            status_code=None,
+            message=(
+                f"Bridge signature request failed: POST {_safe_http_endpoint(fetch_url)}: "
+                f"{type(exc).__name__}"
+            ),
+        ) from None
 
     payload: Any = {}
     if raw:

@@ -775,7 +775,7 @@ def test_fetch_sign_bridge_out_signature_http_error_branches(monkeypatch) -> Non
     with pytest.raises(dx.RESTError) as exc_info:
         bridge_mod.fetch_sign_bridge_out_signature("https://api.example.com", _sign_body())
     assert exc_info.value.status_code == 500
-    assert exc_info.value.message  # falls back to exc.reason
+    assert exc_info.value.message  # falls back to a sanitized transport diagnostic
 
     def http_error_bad_json(req, *args, **kwargs):
         raise urllib.error.HTTPError(
@@ -796,7 +796,7 @@ def test_fetch_sign_bridge_out_signature_url_error(monkeypatch) -> None:
         raise urllib.error.URLError("connection refused")
 
     monkeypatch.setattr(bridge_mod.urllib.request, "urlopen", url_error)
-    with pytest.raises(dx.RESTError, match="connection refused"):
+    with pytest.raises(dx.RESTError, match="URLError"):
         bridge_mod.fetch_sign_bridge_out_signature("https://api.example.com", _sign_body())
 
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import http.client
 import json
 import socket
 import urllib.error
@@ -17,7 +18,12 @@ from ._network import (
     resolve_net,
     resolve_ordered_endpoints,
 )
-from ._rpc_transport import DEFAULT_USER_AGENT, RpcEndpointPool, _safe_http_endpoint
+from ._rpc_transport import (
+    DEFAULT_USER_AGENT,
+    RpcEndpointPool,
+    _safe_http_endpoint,
+    _validate_http_endpoint,
+)
 
 if TYPE_CHECKING:
     from .api_v1 import V1Client
@@ -157,14 +163,15 @@ class ApiClient:
             else (self._api_endpoint_pool.active,)
         )
         for index, endpoint in enumerate(endpoints):
-            url = self._make_url(path, params, base_url=endpoint)
-            req = urllib.request.Request(
-                url,
-                data=data,
-                headers=hdrs,
-                method=method_upper,
-            )
             try:
+                _validate_http_endpoint(endpoint)
+                url = self._make_url(path, params, base_url=endpoint)
+                req = urllib.request.Request(
+                    url,
+                    data=data,
+                    headers=hdrs,
+                    method=method_upper,
+                )
                 with urllib.request.urlopen(req, timeout=self.timeout) as resp:
                     raw = resp.read().decode("utf-8")
             except urllib.error.HTTPError as exc:
@@ -215,12 +222,14 @@ class ApiClient:
                 socket.timeout,
                 urllib.error.URLError,
                 OSError,
+                ValueError,
+                http.client.InvalidURL,
             ) as exc:
                 if retryable and index + 1 < len(endpoints):
                     continue
                 raise RPCError(
                     f"REST request failed: {method_upper} "
-                    f"{_safe_http_endpoint(url)}: {type(exc).__name__}"
+                    f"{_safe_http_endpoint(endpoint)}: {type(exc).__name__}"
                 ) from None
             self._api_endpoint_pool.mark_success(endpoint)
             break

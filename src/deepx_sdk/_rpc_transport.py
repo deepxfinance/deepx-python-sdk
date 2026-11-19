@@ -163,6 +163,19 @@ def substrate_ws_request_endpoints(
     return pool.ordered(), pool
 
 
+def _validate_http_endpoint(url: str) -> None:
+    try:
+        parsed = urlsplit(url)
+        valid = parsed.scheme in {"http", "https"} and parsed.hostname is not None
+        parsed.port
+    except (TypeError, ValueError):
+        valid = False
+    if not valid:
+        raise ValueError(
+            "HTTP endpoint must use http:// or https:// with a valid host and port"
+        ) from None
+
+
 def _safe_http_endpoint(url: str) -> str:
     try:
         parsed = urlsplit(url)

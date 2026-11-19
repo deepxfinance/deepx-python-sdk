@@ -1193,6 +1193,26 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
+Messages are limited to 1 MiB (1,048,576 bytes) by default, both on the
+WebSocket transport and after gzip decompression. `recv_json()` and
+`recv_message()` count UTF-8 bytes for text and total expanded bytes across
+concatenated gzip members. Oversized decoded payloads raise `ValueError` before
+JSON parsing; malformed gzip raises a decompression error.
+
+Set a larger positive byte limit when your application needs larger messages:
+
+```python
+client = WsClient(
+    base_url="wss://ws-testnet.deepx.fi",
+    max_message_size=4 * 1024 * 1024,  # 4 MiB
+)
+```
+
+Directly constructed `WsSession` objects accept the same `max_message_size`
+keyword. Raw `recv()` returns transport data without JSON decoding or gzip
+expansion; the transport message-size limit still applies to sessions opened
+through `WsClient`.
+
 Account channel example:
 
 ```python

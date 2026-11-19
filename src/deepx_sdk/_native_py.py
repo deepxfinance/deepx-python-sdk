@@ -15,6 +15,7 @@ from typing import Any, Optional
 
 from ._rpc_transport import (
     _safe_http_endpoint,
+    _validate_http_endpoint,
     rpc_request_endpoints,
     rpc_request_options,
     substrate_ws_request_endpoints,
@@ -584,13 +585,14 @@ def _rpc_call(evm_rpc_url: str, method: str, params: list[Any]) -> Any:
             f"rpc_call:start method={method} "
             f"url={_safe_http_endpoint(endpoint)} timeout={timeout_s}s"
         )
-        req = urllib.request.Request(
-            endpoint,
-            data=json.dumps(payload).encode("utf-8"),
-            headers=headers,
-        )
         t0 = time.monotonic()
         try:
+            _validate_http_endpoint(endpoint)
+            req = urllib.request.Request(
+                endpoint,
+                data=json.dumps(payload).encode("utf-8"),
+                headers=headers,
+            )
             with urllib.request.urlopen(req, timeout=timeout_s) as resp:
                 body = json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError as exc:

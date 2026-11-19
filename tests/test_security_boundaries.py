@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import gzip
+import http.client
 import io
 import json
 from pathlib import Path
@@ -288,3 +289,100 @@ def test_transaction_scripts_require_explicit_key_before_client_creation(monkeyp
 def test_ws_malformed_gzip_is_not_retried_as_plain_json(message) -> None:
     with pytest.raises((OSError, EOFError)):
         asyncio.run(ws_client.WsSession(MessageSocket(message)).recv_json())
+
+
+def _http_security_call(kind, endpoint):
+    if kind == "rest":
+        return dx.ApiClient(base_url=endpoint).request("GET", "/status")
+    if kind == "async-rest":
+        return asyncio.run(dx.AsyncApiClient(base_url=endpoint).request("GET", "/status"))
+    if kind == "rpc":
+        return _native_py._rpc_call(endpoint, "eth_chainId", [])
+    if kind == "evm":
+        return _evm.evm_call(endpoint, PUBLIC_TEST_ADDRESS, b"")
+    from deepx_sdk.bridge import fetch_sign_bridge_out_signature
+
+    return fetch_sign_bridge_out_signature(endpoint, {}, dst_chain_id=4835)
+
+
+@pytest.mark.parametrize("kind", ["rest", "async-rest", "rpc", "evm", "bridge"])
+@pytest.mark.parametrize("endpoint", [
+    "example.invalid/v2/FAKE_MARKER",
+    "https://[invalid/v2/FAKE_MARKER",
+    "https://node.invalid:bad/v2/FAKE_MARKER",
+    "https:///v2/FAKE_MARKER",
+    "ftp://node.invalid/v2/FAKE_MARKER",
+])
+def test_invalid_http_endpoints_hide_credentials_before_network(monkeypatch, kind, endpoint) -> None:
+    def unexpected_network(*args, **kwargs):
+        pytest.fail("invalid endpoint reached the network")
+
+    monkeypatch.setattr("urllib.request.urlopen", unexpected_network)
+    with pytest.raises((dx.RPCError, dx.RESTError, RuntimeError)) as caught:
+        _http_security_call(kind, endpoint)
+    assert "FAKE_MARKER" not in "".join(traceback.format_exception(caught.value))
+    assert caught.value.__cause__ is None
+
+
+@pytest.mark.parametrize("kind", ["rest", "async-rest", "rpc", "evm", "bridge"])
+@pytest.mark.parametrize("error_type", [ValueError, http.client.InvalidURL])
+def test_http_request_construction_errors_hide_credentials(monkeypatch, kind, error_type) -> None:
+    def invalid_request(*args, **kwargs):
+        raise error_type("invalid URL containing FAKE_MARKER")
+
+    monkeypatch.setattr("urllib.request.Request", invalid_request)
+    with pytest.raises((dx.RPCError, dx.RESTError, RuntimeError)) as caught:
+        _http_security_call(kind, URL)
+    assert "FAKE_MARKER" not in "".join(traceback.format_exception(caught.value))
+    assert_safe("".join(traceback.format_exception(caught.value)))
+
+
+@pytest.mark.parametrize("failure", [
+    urllib.error.URLError("proxy error at https://provider.invalid/v2/FAKE_MARKER"),
+    TimeoutError("timeout at https://provider.invalid/v2/FAKE_MARKER"),
+    OSError("socket error at https://provider.invalid/v2/FAKE_MARKER"),
+])
+def test_bridge_transport_errors_hide_underlying_credentials(monkeypatch, failure) -> None:
+    def fail(*args, **kwargs):
+        raise failure
+
+    monkeypatch.setattr("urllib.request.urlopen", fail)
+    with pytest.raises(dx.RESTError) as caught:
+        _http_security_call("bridge", URL)
+    rendered = "".join(traceback.format_exception(caught.value))
+    assert "FAKE_MARKER" not in rendered
+    assert_safe(rendered)
+    assert "POST https://node.invalid:8443" in str(caught.value)
+    assert type(failure).__name__ in str(caught.value)
+    assert caught.value.status_code is None
+    assert caught.value.__cause__ is None
+
+
+@pytest.mark.parametrize("structured", [False, True])
+def test_bridge_http_errors_preserve_api_fields_without_transport_chain(monkeypatch, structured) -> None:
+    payload = {
+        "message": "Invalid bridge payload", "code": 10001,
+        "errorType": "VALIDATION", "details": {"field": "amount"},
+    }
+    data = json.dumps(payload).encode() if structured else b"upstream unavailable"
+
+    def fail(req, **kwargs):
+        raise urllib.error.HTTPError(
+            req.full_url, 400, "proxy reason containing FAKE_MARKER", {}, io.BytesIO(data),
+        )
+
+    monkeypatch.setattr("urllib.request.urlopen", fail)
+    with pytest.raises(dx.RESTError) as caught:
+        _http_security_call("bridge", URL)
+    error = caught.value
+    assert error.status_code == 400
+    assert "FAKE_MARKER" not in "".join(traceback.format_exception(error))
+    assert_safe("".join(traceback.format_exception(error)))
+    assert error.__cause__ is None
+    if structured:
+        assert error.message == payload["message"]
+        assert error.code == payload["code"]
+        assert error.error_type == payload["errorType"]
+        assert error.details == payload["details"]
+    else:
+        assert "POST https://node.invalid:8443: HTTP 400" in error.message
