@@ -271,6 +271,7 @@ def test_ws_client_passes_limit_to_transport_and_session(monkeypatch) -> None:
     "test_place_order.py", "test_cancel_order.py", "test_close_position.py",
     "test_spot_place_order.py", "test_spot_cancel_order.py", "test_lending_actions.py",
     "test_subaccount_actions.py", "test_set_profit_and_loss_point.py",
+    "real_perp_attached_tp_sl.py",
 ])
 def test_transaction_scripts_require_explicit_key_before_client_creation(monkeypatch, script) -> None:
     monkeypatch.delenv("PRIVATE_KEY", raising=False)

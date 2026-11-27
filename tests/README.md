@@ -11,6 +11,14 @@ Unit tests use mocked network calls and do not require a wallet or live chain.
 Remote checks and scripts are opt-in; see
 [environment variables and run commands](SDK_TEST_ENV_AND_RUN.md).
 
+The attached TP/SL SCALE tests use compressed `state_getMetadata` responses
+captured from DeepX Testnet (runtime 380) and Devnet (runtime 230) on
+November 27, 2026. The fixtures contain raw SCALE bytes. SHA-256 hashes
+of the uncompressed payloads:
+
+- Testnet 380: `bc3fd548eb72253c522f6b5acb7c756fbc2af5b09c6bff5e3b3beac170648dc6`
+- Devnet 230: `baacad63fa2f9efbf59082a85b765bd0ccd8c0a414eb9297ce77221abb2a03fd`
+
 ## Public test keys
 
 Offline signing tests share `tests/_public_test_keys.py`. It derives its key

@@ -63,6 +63,23 @@ Common optional:
 - `EVM_RPC_URL`
 - Module precompile overrides such as `PERP_PRECOMPILE`, `SPOT_PRECOMPILE`, `LENDING_PRECOMPILE`, and `SUBACCOUNT_PRECOMPILE`
 
+### Attached perpetual TP/SL acceptance
+
+On an upgraded test chain, set `SUBSTRATE_WS`, `PRIVATE_KEY` for a dedicated funded
+test wallet, and `ORDER_SUBACCOUNT`, `ORDER_MARKET_ID`, `ORDER_SIZE_RAW`,
+`ORDER_PRICE_RAW`, `ORDER_TAKE_PROFIT_RAW`, and `ORDER_STOP_LOSS_RAW`. Use a
+non-crossing long limit price within the market bounds and valid tick-aligned
+triggers on either side of the mark price. Run:
+
+```bash
+python tests/real_perp_attached_tp_sl.py
+```
+
+The script checks the two child configs in the parent transaction's
+`ConditionalOrdersSubmitted` event and cancels the parent after checking. If
+the order fills or the connection drops, inspect the printed parent ID in the
+test account before retrying.
+
 ## 3. ChainClient View Scripts
 
 ```bash
