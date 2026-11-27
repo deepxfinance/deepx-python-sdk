@@ -710,7 +710,7 @@ res = chain.perp_market.cancel_order(market_id=3, order_id=12345)
 print(res.order_id, res.tx_hash)
 ```
 
-`cancel_order` (and `api.v1.chain_tx.cancel_perp_order`) accepts an optional `fast_cancel=True`: the chain skips the `OrderCancelled` event and prioritizes the cancel, so the SDK waits for inclusion only and echoes the requested `order_id` instead of parsing it from the event.
+`chain.perp_market.cancel_order` confirms successful dispatch and returns the requested `order_id`, including for pending conditional orders on runtimes that support them. Pass `fast_cancel=True` for higher priority and inclusion-only confirmation. The REST submission method also accepts this flag.
 
 `modify_order` atomically cancels an open order and places a new one in a single extrinsic (`Subaccount.modify_orders`, transactional — the old order survives if the new one fails any PlaceOrder check). The new order is a fresh order, so all parameters are explicit; success returns a NEW `order_id` (`res.canceled_order_id` is the old one). Perp additionally supports `new_total_quantity` (total size including the filled part: SDK places `new_total - filled`; equal → cancel-only; smaller → local `ValueError`):
 
@@ -757,14 +757,30 @@ res = chain.perp_market.close_position_market(
 print(res.order_id, res.tx_hash)
 ```
 
+On runtimes with conditional orders, numeric `take_profit` and `stop_loss` parameters on perp orders use the mark price as the trigger source, the order size as the partial quantity, and market execution. Attachments require a market or GTC limit order with reduce-only and post-only disabled. The runtime migration retires legacy attached and position TP/SL. Use `active_conditional_orders(market_id=...)` or `active_position_tp_sl(market_id=...)` to list active IDs. Legacy TP/SL fields on EVM order and position views return zero.
+
+Use `update_tp_sl` to create position conditions and cancel selected IDs in an atomic batch of up to 128 actions. For example, replace an existing take-profit condition by supplying its ID and the new trigger price:
+
 ```python
-res = chain.perp_market.set_profit_and_loss_point(
+res = chain.perp_market.update_tp_sl(
     market_id=3,
-    take_profit_point=123,
-    stop_loss_point=100,
+    actions=[
+        {"Cancel": {"id": existing_take_profit_id}},
+        {"Create": {
+            "condition": "TakeProfit",
+            "source": "Mark",
+            "trigger_price": take_profit_price,
+            "quantity": "Entire",
+            "execution": {"Market": None},
+        }},
+    ],
 )
-print(res.tx_hash, res.extrinsic_hash)
+print(res.tx_hash)
 ```
+
+On older runtimes, use `set_profit_and_loss_point(market_id=..., take_profit_point=..., stop_loss_point=...)` for position TP/SL.
+
+For signed collateral (which can be negative), call `total_collateral_and_margin_required_for(account=..., direction=..., signed_collateral=True)` on runtimes with the V2 precompile.
 
 ### Spot market orders
 

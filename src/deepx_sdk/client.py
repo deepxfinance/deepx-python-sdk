@@ -20,6 +20,7 @@ from ._perp_market import (
     set_per_market_leverage,
     set_profit_and_loss_point,
     settle_pnl,
+    update_tp_sl,
 )
 from ._lending import (
     asset_pools,
@@ -43,6 +44,7 @@ from ._lending import (
     withdraw_and_swap_evm,
 )
 from ._perp_market import (
+    _active_conditional_ids,
     active_pos_for_market,
     effective_leverage_for,
     free_deposit_for,
@@ -1291,6 +1293,7 @@ class PerpMarketClient(_EvmTransportClientMixin):
         wait_for_finalized: Optional[bool] = None,
         timeout_ms: Optional[int] = None,
     ) -> PositionUpdatedResult:
+        """Set position TP/SL on legacy runtimes. Use update_tp_sl on newer runtimes."""
         resolved_market_id = self._client._resolve_perp_market_id(
             market_id=market_id,
             symbol=symbol,
@@ -1315,6 +1318,65 @@ class PerpMarketClient(_EvmTransportClientMixin):
                 wait_for_finalized=wait_for_finalized,
                 timeout_ms=timeout_ms,
             ),
+        )
+
+    def update_tp_sl(
+        self,
+        *,
+        actions: Sequence[dict],
+        market_id: int | None = None,
+        symbol: str | None = None,
+        subaccount: str | None = None,
+        nonce_ms: int | None = None,
+        wait_for_finalized: bool | None = None,
+        timeout_ms: int | None = None,
+    ) -> TxResult:
+        """Atomically create and cancel position TP/SL conditions on supported runtimes."""
+        return update_tp_sl(
+            substrate_ws=self._client.substrate_ws,
+            private_key=self._client.private_key,
+            subaccount=subaccount or self._client.subaccount,
+            market_id=self._client._resolve_perp_market_id(market_id=market_id, symbol=symbol),
+            actions=actions,
+            nonce_ms=nonce_ms,
+            wait_for_finalized=(
+                self._client.wait_for_finalized if wait_for_finalized is None else wait_for_finalized
+            ),
+            timeout_ms=timeout_ms,
+        )
+
+    def active_position_tp_sl(
+        self,
+        *,
+        market_id: int | None = None,
+        symbol: str | None = None,
+        subaccount: str | None = None,
+        precompile_address: str | None = None,
+    ) -> list[int]:
+        """Return the IDs of active position-bound conditions on supported runtimes."""
+        return _active_conditional_ids(
+            evm_rpc_url=self._client.evm_rpc_url,
+            precompile_address=self._precompile_address(precompile_address),
+            subaccount=subaccount or self._client.subaccount,
+            market_id=self._client._resolve_perp_market_id(market_id=market_id, symbol=symbol),
+            position_only=True,
+        )
+
+    def active_conditional_orders(
+        self,
+        *,
+        market_id: int | None = None,
+        symbol: str | None = None,
+        subaccount: str | None = None,
+        precompile_address: str | None = None,
+    ) -> list[int]:
+        """Return all active conditional order IDs for the subaccount and market."""
+        return _active_conditional_ids(
+            evm_rpc_url=self._client.evm_rpc_url,
+            precompile_address=self._precompile_address(precompile_address),
+            subaccount=subaccount or self._client.subaccount,
+            market_id=self._client._resolve_perp_market_id(market_id=market_id, symbol=symbol),
+            position_only=False,
         )
 
     def set_global_leverage(
@@ -1581,12 +1643,15 @@ class PerpMarketClient(_EvmTransportClientMixin):
         account: str,
         direction: int,
         precompile_address: Optional[str] = None,
+        signed_collateral: bool = False,
     ) -> TotalCollateralAndMarginInfo:
+        """Read collateral and margin. Signed collateral requires the V2 precompile."""
         return total_collateral_and_margin_required_for(
             evm_rpc_url=self._client.evm_rpc_url,
             precompile_address=self._precompile_address(precompile_address),
             account=account,
             direction=direction,
+            signed_collateral=signed_collateral,
         )
 
     def get_liquidate_price(

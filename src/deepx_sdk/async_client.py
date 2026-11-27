@@ -151,32 +151,22 @@ class AsyncPerpMarketClient:
         }
 
         def decode(
-            fields: Mapping[str, Any],
+            _fields: Mapping[str, Any],
             pending: PendingTransaction[CancelOrderResult],
         ) -> CancelOrderResult:
-            resolved_order_id = (
-                int(order_id)
-                if fast_cancel
-                else _parse_perp_int_field(fields, "order_id")
-            )
             return CancelOrderResult(
-                order_id=resolved_order_id,
+                order_id=int(order_id),
                 tx_hash=pending.tx_hash,
                 extrinsic_hash=pending.extrinsic_hash or pending.tx_hash,
             )
 
-        expected_event = (
-            ExpectedEvent("System", "ExtrinsicSuccess")
-            if fast_cancel
-            else ExpectedEvent("PerpMarket", "OrderCancelled")
-        )
         return await self._client._submit(
             call_module="PerpMarket",
             call_function="cancel_order",
             call_params=call_params,
             nonce_ms=nonce_ms,
             cloid=None,
-            expected_event=expected_event,
+            expected_event=ExpectedEvent("System", "ExtrinsicSuccess"),
             result_decoder=decode,
             priority=fast_cancel,
         )

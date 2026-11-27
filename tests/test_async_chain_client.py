@@ -668,10 +668,9 @@ def test_cancel_order_normal_and_fast_shapes() -> None:
                 "fast_cancel": True,
             }
         }
-        assert components.tracker.submissions[0]["expected_event"] == ExpectedEvent(
-            "PerpMarket",
-            "OrderCancelled",
-        )
+        normal = components.tracker.submissions[0]
+        assert normal["expected_event"] == ExpectedEvent("System", "ExtrinsicSuccess")
+        assert normal["result_decoder"]({}, components.tracker.handles[0]).order_id == 41
         assert components.tracker.submissions[1]["expected_event"] == ExpectedEvent(
             "System",
             "ExtrinsicSuccess",

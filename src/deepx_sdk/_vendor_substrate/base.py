@@ -37,6 +37,7 @@ from .storage import StorageKey
 from .exceptions import SubstrateRequestException, ConfigurationError, StorageFunctionNotFound, BlockNotFound, \
     ExtrinsicNotFound, ExtensionCallNotFound
 from .constants import *
+from .._perp_runtime import adapt_perp_call
 from .._signing_backend import NativeKeypair as Keypair
 from .utils.ss58 import ss58_decode, ss58_encode, is_valid_ss58_address, get_ss58_format
 from .transport import HttpTransport, WebsocketTransport
@@ -1318,7 +1319,7 @@ class SubstrateInterface:
         call.encode({
             'call_module': call_module,
             'call_function': call_function,
-            'call_args': call_params
+            'call_args': adapt_perp_call(self, call_module, call_function, call_params)
         })
 
         return call

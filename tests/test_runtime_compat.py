@@ -339,11 +339,11 @@ def test_perp_order_action_variants_and_validation(monkeypatch) -> None:
 def test_perp_cancel_uses_pallet_call(monkeypatch) -> None:
     captured: dict[str, object] = {}
 
-    def fake_submit_pallet_call_wait_event(**kwargs):
+    def fake_submit_pallet_call(**kwargs):
         captured["submit"] = kwargs
         return _DummyEvent()
 
-    monkeypatch.setattr(_perp_market, "submit_pallet_call_wait_event", fake_submit_pallet_call_wait_event)
+    monkeypatch.setattr(_perp_market, "submit_pallet_call", fake_submit_pallet_call)
 
     result = _perp_market.cancel_perp_order(
         substrate_ws="wss://node",
@@ -355,7 +355,7 @@ def test_perp_cancel_uses_pallet_call(monkeypatch) -> None:
         order_id=99,
     )
 
-    assert result.order_id == 123
+    assert result.order_id == 99
     assert captured["submit"]["call_module"] == "PerpMarket"
     assert captured["submit"]["call_function"] == "cancel_order"
     assert captured["submit"]["call_params"] == {
@@ -367,7 +367,7 @@ def test_perp_cancel_uses_pallet_call(monkeypatch) -> None:
             "fast_cancel": False,
         }
     }
-    assert captured["submit"]["event"] == "OrderCancelled"
+    assert captured["submit"]["wait_for_finalized"] is True
 
 
 def test_perp_cancel_fast_cancel_waits_for_inclusion_only(monkeypatch) -> None:
@@ -485,7 +485,10 @@ def test_perp_modify_order_builds_cancel_place_ops(monkeypatch) -> None:
         return types.SimpleNamespace(
             tx_hash="0xtx",
             extrinsic_hash="0xext",
-            fields_json='{"order_id": 777}',
+            fields_json=(
+                '{"op_results": [[0, {"Ok": {"Perp": {"OrderCancelled": {"order_id": 99}}}}],'
+                '[1, {"Ok": {"Perp": {"OrderPlaced": {"order_id": 777}}}}]]}'
+            ),
         )
 
     monkeypatch.setattr(_perp_market, "_submit_modify_orders", fake_submit_modify_orders)
@@ -507,8 +510,8 @@ def test_perp_modify_order_builds_cancel_place_ops(monkeypatch) -> None:
 
     assert result.order_id == 777
     assert result.canceled_order_id == 99
-    assert captured["submit"]["pallet"] == "PerpMarket"
-    assert captured["submit"]["event"] == "OrderPlaced"
+    assert captured["submit"]["pallet"] == "Subaccount"
+    assert captured["submit"]["event"] == "BatchOps"
     assert captured["submit"]["nonce_ms"] == 1781757000123
     assert captured["submit"]["ops"] == [
         {
@@ -547,7 +550,13 @@ def test_perp_modify_order_new_total_quantity(monkeypatch) -> None:
 
     def fake_submit_modify_orders(**kwargs):
         captured["submit"] = kwargs
-        return types.SimpleNamespace(tx_hash="0xtx", extrinsic_hash="0xext", fields_json='{"order_id": 777}')
+        return types.SimpleNamespace(
+            tx_hash="0xtx", extrinsic_hash="0xext",
+            fields_json=(
+                '{"op_results": [[0, {"Ok": {"Perp": {"OrderCancelled": {"order_id": 99}}}}],'
+                '[1, {"Ok": {"Perp": {"OrderPlaced": {"order_id": 777}}}}]]}'
+            ),
+        )
 
     def fake_order_info(**_kwargs):
         return types.SimpleNamespace(size_filled=4 * 10**14)  # 0.0004 ETH filled
@@ -572,6 +581,7 @@ def test_perp_modify_order_new_total_quantity(monkeypatch) -> None:
     assert result.order_id == 777
     place = captured["submit"]["ops"][1]["Place"]["Perp"]
     assert place["size"] == 10**15 - 4 * 10**14
+    assert captured["submit"]["perp_total_quantity"] == 10**15
 
     # new_total == filled -> degrades to plain cancel
     cancelled: dict[str, object] = {}

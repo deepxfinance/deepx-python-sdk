@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 import json
 from typing import Any, Optional
 
@@ -10,6 +12,7 @@ from ._abi import (
     normalize_address,
 )
 from ._evm import evm_call
+from ._errors import ValidationError
 from ._native import (
     build_signed_tx,
     submit_pallet_call,
@@ -276,39 +279,24 @@ def cancel_perp_order(
 ) -> CancelOrderResult:
     _ = evm_rpc_url, precompile_address, chain_id, gas_limit, max_fee_per_gas
     _ = max_priority_fee_per_gas, use_legacy
-    # On-chain `cancel_order` takes a single `params: PerpCancelParams` arg.
-    # With fast_cancel=True the pallet skips the OrderCancelled event (higher
-    # priority), so wait for inclusion only and echo the requested order_id.
+    # Pending conditions only emit ConditionalOrderUpdated. Confirm the
+    # dispatch result for either kind of order and return the requested ID.
     call_params = _perp_cancel_params(
         subaccount=subaccount, market_id=market_id, order_id=order_id, fast_cancel=fast_cancel,
     )
-    if fast_cancel:
-        tx = submit_pallet_call(
-            substrate_ws=substrate_ws,
-            private_key=private_key,
-            call_module="PerpMarket",
-            call_function="cancel_order",
-            call_params=call_params,
-            nonce_ms=nonce_ms,
-            wait_for_finalized=False,
-            timeout_ms=timeout_ms,
-        )
-        return CancelOrderResult(order_id=int(order_id), tx_hash=tx.tx_hash, extrinsic_hash=tx.extrinsic_hash)
-    ev = submit_pallet_call_wait_event(
+    tx = submit_pallet_call(
         substrate_ws=substrate_ws,
         private_key=private_key,
         call_module="PerpMarket",
         call_function="cancel_order",
         call_params=call_params,
-        pallet="PerpMarket",
-        event="OrderCancelled",
         nonce_ms=nonce_ms,
-        wait_for_finalized=wait_for_finalized,
+        wait_for_finalized=wait_for_finalized and not fast_cancel,
         timeout_ms=timeout_ms,
     )
-    fields = json.loads(ev.fields_json)
-    order_id = _parse_int_field(fields, "order_id")
-    return CancelOrderResult(order_id=order_id, tx_hash=ev.tx_hash, extrinsic_hash=ev.extrinsic_hash)
+    return CancelOrderResult(
+        order_id=int(order_id), tx_hash=tx.tx_hash, extrinsic_hash=tx.extrinsic_hash,
+    )
 
 
 def _perp_cancel_params(
@@ -432,14 +420,28 @@ def modify_perp_order(
         substrate_ws=substrate_ws,
         private_key=private_key,
         ops=ops,
-        pallet="PerpMarket",
-        event="OrderPlaced",
+        perp_total_quantity=None if new_total_quantity is None else int(new_total_quantity),
+        pallet="Subaccount",
+        event="BatchOps",
         nonce_ms=nonce_ms,
         wait_for_finalized=wait_for_finalized,
         timeout_ms=timeout_ms,
     )
-    fields = json.loads(ev.fields_json)
-    new_order_id = _parse_int_field(fields, "order_id")
+    results = json.loads(ev.fields_json)["op_results"]
+    # A conditional replacement can become a cancel-only result if the
+    # quantity left to place reaches zero before the call executes.
+    if len(results) == 1:
+        (index, result), = results
+        cancelled = result.get("Ok", {}).get("Perp", {}).get("OrderCancelled", {})
+        if index != 0 or _parse_int_field(cancelled, "order_id") != int(order_id):
+            raise RuntimeError("Unexpected cancel result in Subaccount.BatchOps")
+        new_order_id = int(order_id)
+    else:
+        index, result = results[1]
+        if index != 1:
+            raise RuntimeError("Missing place result in Subaccount.BatchOps")
+        placed = result.get("Ok", {}).get("Perp", {}).get("OrderPlaced", {})
+        new_order_id = _parse_int_field(placed, "order_id")
     return ModifyOrderResult(
         order_id=new_order_id,
         tx_hash=ev.tx_hash,
@@ -718,6 +720,39 @@ def set_profit_and_loss_point(
         extrinsic_hash=ev.extrinsic_hash,
         fields=parsed_fields,
     )
+
+
+def update_tp_sl(
+    *,
+    substrate_ws: str,
+    private_key: str,
+    subaccount: str,
+    market_id: int,
+    actions: Sequence[dict],
+    nonce_ms: int | None = None,
+    wait_for_finalized: bool = True,
+    timeout_ms: int | None = None,
+) -> TxResult:
+    if not 1 <= len(actions) <= 128:
+        raise ValidationError("update_tp_sl requires between 1 and 128 actions.")
+    for action in actions:
+        if len(action) != 1 or not ("Create" in action or "Cancel" in action):
+            raise ValidationError("Each TP/SL action must be a Create or Cancel.")
+    tx = submit_pallet_call(
+        substrate_ws=substrate_ws,
+        private_key=private_key,
+        call_module="PerpMarket",
+        call_function="update_tp_sl",
+        call_params={
+            "subaccount": normalize_address(subaccount),
+            "market_id": int(market_id),
+            "actions": list(actions),
+        },
+        nonce_ms=nonce_ms,
+        wait_for_finalized=wait_for_finalized,
+        timeout_ms=timeout_ms,
+    )
+    return TxResult(tx_hash=tx.tx_hash, event=None)
 
 
 def set_global_leverage(
@@ -1248,15 +1283,38 @@ def total_collateral_and_margin_required_for(
     precompile_address: str,
     account: str,
     direction: int,
+    signed_collateral: bool = False,
 ) -> TotalCollateralAndMarginInfo:
+    selector = (
+        "totalCollateralAndMarginRequiredForV2(address,uint8)"
+        if signed_collateral else "totalCollateralAndMarginRequiredFor(address,uint8)"
+    )
     data = encode_call(
-        "totalCollateralAndMarginRequiredFor(address,uint8)",
+        selector,
         ["address", "uint8"],
         [normalize_address(account), direction],
     )
     raw = evm_call(evm_rpc_url, precompile_address, data)
-    (value,) = decode_abi([_TOTAL_COLLATERAL_TUPLE], raw)
+    abi_type = "(int128,uint128)" if signed_collateral else _TOTAL_COLLATERAL_TUPLE
+    (value,) = decode_abi([abi_type], raw)
     return TotalCollateralAndMarginInfo(collateral=int(value[0]), margin_required=int(value[1]))
+
+
+def _active_conditional_ids(
+    *,
+    evm_rpc_url: str,
+    precompile_address: str,
+    subaccount: str,
+    market_id: int,
+    position_only: bool,
+) -> list[int]:
+    selector = (
+        "activePositionTpSl(address,uint16)"
+        if position_only else "activeConditionalOrders(address,uint16)"
+    )
+    data = encode_call(selector, ["address", "uint16"], [normalize_address(subaccount), market_id])
+    (ids,) = decode_abi(["uint64[]"], evm_call(evm_rpc_url, precompile_address, data))
+    return list(ids)
 
 
 def get_liquidate_price(

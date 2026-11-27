@@ -611,6 +611,7 @@ def _submit_modify_orders(
     substrate_ws: str,
     private_key: str,
     ops: list,
+    perp_total_quantity: int | None = None,
     pallet: str,
     event: str,
     nonce_ms: Optional[int] = None,
@@ -619,14 +620,18 @@ def _submit_modify_orders(
 ):
     # Shared submit for the atomic modify (cancel+place) path. `modify_orders`
     # is CallType::Timestamp(1) and transactional — the whole extrinsic rolls
-    # back if either op fails. The new order id is read from the market
-    # pallet's OrderPlaced / StateOrder{Buy,Sell} event fired by the same tx.
+    # back if either op fails. Perp callers read BatchOps to handle
+    # cancel-only conditional replacements. Spot callers read market events.
+    call_params = {"ops": ops}
+    if perp_total_quantity is not None:
+        # The composer preserves the requested total for conditional parents.
+        call_params["_perp_total_quantity"] = perp_total_quantity
     return submit_pallet_call_wait_event(
         substrate_ws=substrate_ws,
         private_key=private_key,
         call_module="Subaccount",
         call_function="modify_orders",
-        call_params={"ops": ops},
+        call_params=call_params,
         pallet=pallet,
         event=event,
         nonce_ms=nonce_ms,
